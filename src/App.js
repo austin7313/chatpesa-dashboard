@@ -31,7 +31,6 @@ function App() {
       const res = await fetch(`${API_BASE}/orders`);
       const data = await res.json();
       setRawPayload(data);
-
       if (data.orders && Array.isArray(data.orders)) {
         setOrders(data.orders);
         setError(null);
@@ -49,10 +48,7 @@ function App() {
     try {
       const date = new Date(iso);
       const eatDate = new Date(date.getTime() + 3 * 60 * 60 * 1000);
-      return eatDate.toLocaleString("en-KE", {
-        dateStyle: "short",
-        timeStyle: "short"
-      });
+      return eatDate.toLocaleString("en-KE", { dateStyle: "short", timeStyle: "short" });
     } catch {
       return iso;
     }
@@ -70,8 +66,7 @@ function App() {
         border: `1px solid ${apiOnline ? "#28a745" : "#dc3545"}`
       }}>
         <p style={{ margin: 0 }}>
-          System Status:{" "}
-          <strong style={{ color: apiOnline ? "green" : "red" }}>
+          System Status: <strong style={{ color: apiOnline ? "green" : "red" }}>
             {apiOnline ? "✅ API ONLINE" : "❌ API OFFLINE"}
           </strong>
         </p>
@@ -85,21 +80,16 @@ function App() {
         )}
       </div>
 
-      <button
-        onClick={fetchOrders}
-        style={{
-          padding: "10px 20px",
-          fontSize: 14,
-          fontWeight: "bold",
-          background: "#007bff",
-          color: "white",
-          border: "none",
-          borderRadius: 6,
-          cursor: "pointer"
-        }}
-      >
-        🔄 Refresh Now
-      </button>
+      <button onClick={fetchOrders} style={{
+        padding: "10px 20px",
+        fontSize: 14,
+        fontWeight: "bold",
+        background: "#007bff",
+        color: "white",
+        border: "none",
+        borderRadius: 6,
+        cursor: "pointer"
+      }}>🔄 Refresh Now</button>
 
       <table border="1" cellPadding="12" style={{ marginTop: 20, width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
         <thead style={{ background: "#f8f9fa" }}>
@@ -121,35 +111,31 @@ function App() {
                 {apiOnline ? "No orders yet." : "Cannot load orders - API is offline"}
               </td>
             </tr>
-          ) : (
-            orders.map((o, index) => (
-              <tr key={o.id || index} style={{
-                background: o.status === 'paid' ? '#d4edda' :
-                           o.status === 'awaiting_payment' ? '#fff3cd' : 'white'
-              }}>
-                <td style={{ fontFamily: "monospace", fontWeight: "bold" }}>{o.id || "MISSING_ID"}</td>
-                <td>{o.customer_phone || "—"}</td>
-                <td>{o.name || "—"}</td>
-                <td>{o.items || o.raw_message || "—"}</td>
-                <td style={{ fontWeight: "bold" }}>{o.amount ? `KES ${o.amount.toLocaleString()}` : "—"}</td>
-                <td>
-                  <span style={{
-                    padding: "4px 8px",
-                    borderRadius: 4,
-                    fontSize: 11,
-                    fontWeight: "bold",
-                    background: o.status === 'paid' ? '#28a745' :
-                               o.status === 'awaiting_payment' ? '#ffc107' : '#6c757d',
-                    color: 'white'
-                  }}>
-                    {(o.status || "UNKNOWN").toUpperCase()}
-                  </span>
-                </td>
-                <td style={{ fontFamily: "monospace", fontSize: 12 }}>{o.receipt_number || "—"}</td>
-                <td style={{ fontSize: 12, color: "#666" }}>{formatTime(o.created_at || o.timestamp)}</td>
-              </tr>
-            ))
-          )}
+          ) : orders.map((o, i) => (
+            <tr key={o.id || i} style={{
+              background: o.status === 'paid' ? '#d4edda' :
+                         o.status === 'awaiting_payment' ? '#fff3cd' : 'white'
+            }}>
+              <td style={{ fontFamily: "monospace", fontWeight: "bold" }}>{o.id}</td>
+              <td>{o.customer_phone}</td>
+              <td>{o.name || "—"}</td>
+              <td>{o.items}</td>
+              <td>{o.amount ? `KES ${o.amount.toLocaleString()}` : "—"}</td>
+              <td>
+                <span style={{
+                  padding: "4px 8px",
+                  borderRadius: 4,
+                  fontSize: 11,
+                  fontWeight: "bold",
+                  background: o.status === 'paid' ? '#28a745' :
+                             o.status === 'awaiting_payment' ? '#ffc107' : '#6c757d',
+                  color: 'white'
+                }}>{(o.status || "UNKNOWN").toUpperCase()}</span>
+              </td>
+              <td style={{ fontFamily: "monospace", fontSize: 12 }}>{o.receipt_number}</td>
+              <td style={{ fontSize: 12, color: "#666" }}>{formatTime(o.created_at)}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
 
