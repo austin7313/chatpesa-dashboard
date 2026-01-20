@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 
-const API_BASE = process.env.REACT_APP_API_BASE || "https://chatpesa-whatsapp.onrender.com";
+const API_BASE =
+  process.env.REACT_APP_API_BASE || "https://chatpesa-whatsapp.onrender.com";
 
 function App() {
   const [orders, setOrders] = useState([]);
@@ -9,37 +10,51 @@ function App() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    checkHealth();
-    fetchOrders();
-    const interval = setInterval(fetchOrders, 5000);
+    pollBackend();
+    const interval = setInterval(pollBackend, 5000);
     return () => clearInterval(interval);
   }, []);
 
+  const pollBackend = async () => {
+    await checkHealth();
+    await fetchOrders();
+  };
+
   const checkHealth = async () => {
     try {
-      const res = await fetch(`${API_BASE}/health`);
-      setApiOnline(res.ok);
-      setError(null);
+      const res = await fetch(`${API_BASE}/health`, { cache: "no-store" });
+      const data = await res.json();
+
+      if (res.ok && data.status === "ok") {
+        setApiOnline(true);
+        setError(null);
+      } else {
+        setApiOnline(false);
+        setError("Health check failed");
+      }
     } catch (e) {
       setApiOnline(false);
-      setError(`Connection failed: ${e.message}`);
+      setError(`Health check error: ${e.message}`);
     }
   };
 
   const fetchOrders = async () => {
     try {
-      const res = await fetch(`${API_BASE}/orders`);
+      const res = await fetch(`${API_BASE}/orders`, { cache: "no-store" });
       const data = await res.json();
       setRawPayload(data);
 
-      if (data.orders && Array.isArray(data.orders)) {
+      if (res.ok && data.orders && Array.isArray(data.orders)) {
         setOrders(data.orders);
+        setApiOnline(true); // 🔥 CRITICAL FIX
         setError(null);
       } else {
         setOrders([]);
-        setError("API returned unexpected format");
+        setApiOnline(false);
+        setError("Orders API returned unexpected format");
       }
     } catch (e) {
+      setApiOnline(false);
       setError(`Failed to load orders: ${e.message}`);
     }
   };
@@ -49,11 +64,10 @@ function App() {
     if (!iso) return "—";
     try {
       const date = new Date(iso);
-      // Convert UTC to EAT (+3)
       const eatDate = new Date(date.getTime() + 3 * 60 * 60 * 1000);
       return eatDate.toLocaleString("en-KE", {
         dateStyle: "short",
-        timeStyle: "short"
+        timeStyle: "short",
       });
     } catch {
       return iso;
@@ -65,13 +79,15 @@ function App() {
       <h1>💳 ChatPesa Dashboard</h1>
 
       {/* Status Bar */}
-      <div style={{
-        padding: 12,
-        marginBottom: 20,
-        borderRadius: 8,
-        background: apiOnline ? "#d4edda" : "#f8d7da",
-        border: `1px solid ${apiOnline ? "#28a745" : "#dc3545"}`
-      }}>
+      <div
+        style={{
+          padding: 12,
+          marginBottom: 20,
+          borderRadius: 8,
+          background: apiOnline ? "#d4edda" : "#f8d7da",
+          border: `1px solid ${apiOnline ? "#28a745" : "#dc3545"}`,
+        }}
+      >
         <p style={{ margin: 0 }}>
           System Status:{" "}
           <strong style={{ color: apiOnline ? "green" : "red" }}>
@@ -89,7 +105,7 @@ function App() {
       </div>
 
       <button
-        onClick={fetchOrders}
+        onClick={pollBackend}
         style={{
           padding: "10px 20px",
           fontSize: 14,
@@ -98,7 +114,7 @@ function App() {
           color: "white",
           border: "none",
           borderRadius: 6,
-          cursor: "pointer"
+          cursor: "pointer",
         }}
       >
         🔄 Refresh Now
@@ -112,7 +128,7 @@ function App() {
           marginTop: 20,
           width: "100%",
           borderCollapse: "collapse",
-          fontSize: 14
+          fontSize: 14,
         }}
       >
         <thead style={{ background: "#f8f9fa" }}>
@@ -130,36 +146,57 @@ function App() {
           {orders.length === 0 ? (
             <tr>
               <td colSpan="7" align="center" style={{ padding: 30, color: "#999" }}>
-                {apiOnline ? "No orders yet." : "Cannot load orders - API is offline"}
+                {apiOnline
+                  ? "No orders yet."
+                  : "Cannot load orders - API is offline"}
               </td>
             </tr>
           ) : (
             orders.map((o, index) => (
-              <tr key={o.id || index} style={{
-                background: o.status === 'paid' ? '#d4edda' :
-                           o.status === 'awaiting_payment' ? '#fff3cd' : 'white'
-              }}>
-                <td style={{ fontFamily: "monospace", fontWeight: "bold" }}>{o.id || "MISSING_ID"}</td>
+              <tr
+                key={o.id || index}
+                style={{
+                  background:
+                    o.status === "paid"
+                      ? "#d4edda"
+                      : o.status === "awaiting_payment"
+                      ? "#fff3cd"
+                      : "white",
+                }}
+              >
+                <td style={{ fontFamily: "monospace", fontWeight: "bold" }}>
+                  {o.id || "MISSING_ID"}
+                </td>
                 <td>{o.customer_phone || "—"}</td>
                 <td>{o.items || o.raw_message || "—"}</td>
                 <td style={{ fontWeight: "bold" }}>
                   {o.amount ? `KES ${o.amount.toLocaleString()}` : "—"}
                 </td>
                 <td>
-                  <span style={{
-                    padding: "4px 8px",
-                    borderRadius: 4,
-                    fontSize: 11,
-                    fontWeight: "bold",
-                    background: o.status === 'paid' ? '#28a745' :
-                               o.status === 'awaiting_payment' ? '#ffc107' : '#6c757d',
-                    color: 'white'
-                  }}>
+                  <span
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: 4,
+                      fontSize: 11,
+                      fontWeight: "bold",
+                      background:
+                        o.status === "paid"
+                          ? "#28a745"
+                          : o.status === "awaiting_payment"
+                          ? "#ffc107"
+                          : "#6c757d",
+                      color: "white",
+                    }}
+                  >
                     {(o.status || "UNKNOWN").toUpperCase()}
                   </span>
                 </td>
-                <td style={{ fontFamily: "monospace", fontSize: 12 }}>{o.receipt_number || o.mpesa_receipt || "—"}</td>
-                <td style={{ fontSize: 12, color: "#666" }}>{formatTime(o.created_at || o.timestamp)}</td>
+                <td style={{ fontFamily: "monospace", fontSize: 12 }}>
+                  {o.receipt_number || o.mpesa_receipt || "—"}
+                </td>
+                <td style={{ fontSize: 12, color: "#666" }}>
+                  {formatTime(o.created_at || o.timestamp)}
+                </td>
               </tr>
             ))
           )}
@@ -168,25 +205,29 @@ function App() {
 
       {/* Raw Debug */}
       <details style={{ marginTop: 30 }}>
-        <summary style={{
-          cursor: "pointer",
-          fontWeight: "bold",
-          padding: 8,
-          background: "#f0f0f0",
-          borderRadius: 4
-        }}>
+        <summary
+          style={{
+            cursor: "pointer",
+            fontWeight: "bold",
+            padding: 8,
+            background: "#f0f0f0",
+            borderRadius: 4,
+          }}
+        >
           🧪 Raw API Response
         </summary>
-        <pre style={{
-          background: "#1e1e1e",
-          color: "#4ec9b0",
-          padding: 16,
-          maxHeight: 400,
-          overflow: "auto",
-          fontSize: 12,
-          borderRadius: 4,
-          marginTop: 8
-        }}>
+        <pre
+          style={{
+            background: "#1e1e1e",
+            color: "#4ec9b0",
+            padding: 16,
+            maxHeight: 400,
+            overflow: "auto",
+            fontSize: 12,
+            borderRadius: 4,
+            marginTop: 8,
+          }}
+        >
           {JSON.stringify(rawPayload, null, 2) || "No data yet"}
         </pre>
       </details>
