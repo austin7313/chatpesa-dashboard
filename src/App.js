@@ -1,241 +1,119 @@
-import React, { useEffect, useState } from "react";
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from datetime import datetime
+import json
+import os
 
-const API_BASE = process.env.REACT_APP_API_BASE || "https://chatpesa-whatsapp.onrender.com";
+app = Flask(__name__)
+CORS(app)
 
-function App() {
-  const [orders, setOrders] = useState([]);
-  const [apiOnline, setApiOnline] = useState(false);
-  const [rawPayload, setRawPayload] = useState(null);
-  const [error, setError] = useState(null);
+DATA_FILE = "orders.json"
 
-  useEffect(() => {
-    checkHealth();
-    fetchOrders();
-    const interval = setInterval(fetchOrders, 5000);
-    return () => clearInterval(interval);
-  }, []);
+# ------------------------
+# Helpers
+# ------------------------
 
-  const checkHealth = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/health`); // ✅ FIXED
-      setApiOnline(res.ok);
-      setError(null);
-    } catch (e) {
-      console.error("Health check failed:", e);
-      setApiOnline(false);
-      setError(`Connection failed: ${e.message}`);
+def load_orders():
+    if not os.path.exists(DATA_FILE):
+        return []
+    with open(DATA_FILE, "r") as f:
+        try:
+            return json.load(f)
+        except json.JSONDecodeError:
+            return []
+
+def save_orders(orders):
+    with open(DATA_FILE, "w") as f:
+        json.dump(orders, f, indent=2)
+
+def generate_order_id(orders):
+    if not orders:
+        return "ORD-0001"
+    last_id = orders[-1].get("id", "ORD-0000")
+    try:
+        num = int(last_id.split("-")[1])
+    except:
+        num = len(orders)
+    return f"ORD-{num + 1:04d}"
+
+# ------------------------
+# Routes
+# ------------------------
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route("/orders", methods=["GET"])
+def get_orders():
+    orders = load_orders()
+    return jsonify({
+        "status": "ok",
+        "orders": orders
+    }), 200
+
+
+@app.route("/orders", methods=["POST"])
+def create_order():
+    data = request.json or {}
+    orders = load_orders()
+
+    order_id = generate_order_id(orders)
+    created_at = datetime.utcnow().isoformat()
+
+    order = {
+        "id": order_id,
+        "customer_phone": data.get("customer_phone", "unknown"),
+        "customer_name": data.get("customer_name", "Customer"),
+        "items": data.get("items", ""),
+        "amount": data.get("amount", 0),
+        "status": data.get("status", "awaiting_payment"),
+        "receipt_number": data.get("receipt_number"),
+        "created_at": created_at
     }
-  };
 
-  const fetchOrders = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/orders`); // ✅ FIXED
-      const data = await res.json();
-      console.log("RAW API PAYLOAD:", data);
-      setRawPayload(data);
-      
-      if (data.orders && Array.isArray(data.orders)) {
-        setOrders(data.orders);
-        setError(null);
-      } else {
-        console.warn("Unexpected data format:", data);
-        setError("API returned unexpected format");
-      }
-    } catch (e) {
-      console.error("Fetch orders failed:", e);
-      setError(`Failed to load orders: ${e.message}`);
+    orders.append(order)
+    save_orders(orders)
+
+    return jsonify({
+        "status": "ok",
+        "order": order
+    }), 201
+
+
+# ------------------------
+# Test Seed Endpoint (TEMP)
+# ------------------------
+# Hit this once to generate a fake paid order
+# You can delete this later
+
+@app.route("/debug/seed", methods=["POST"])
+def seed_order():
+    orders = load_orders()
+
+    order_id = generate_order_id(orders)
+    created_at = datetime.utcnow().isoformat()
+
+    fake_order = {
+        "id": order_id,
+        "customer_phone": "whatsapp:+254722275271",
+        "customer_name": "Test User",
+        "items": "Pilau x1",
+        "amount": 10,
+        "status": "paid",
+        "receipt_number": f"RCP{len(orders)+1:04d}",
+        "created_at": created_at
     }
-  };
 
-  const formatTime = (iso) => {
-    if (!iso) return "—";
-    try {
-      const date = new Date(iso);
-      return date.toLocaleString("en-KE", {
-        dateStyle: "short",
-        timeStyle: "medium"
-      });
-    } catch {
-      return iso;
-    }
-  };
+    orders.append(fake_order)
+    save_orders(orders)
 
-  return (
-    <div style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
-      <h1>💳 ChatPesa Dashboard</h1>
-      
-      {/* Status Bar */}
-      <div style={{ 
-        padding: 12, 
-        marginBottom: 20, 
-        borderRadius: 8,
-        background: apiOnline ? "#d4edda" : "#f8d7da",
-        border: `1px solid ${apiOnline ? "#28a745" : "#dc3545"}`
-      }}>
-        <p style={{ margin: 0 }}>
-          System Status:{" "}
-          <strong style={{ color: apiOnline ? "green" : "red" }}>
-            {apiOnline ? "✅ API ONLINE" : "❌ API OFFLINE"}
-          </strong>
-        </p>
-        <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "#666" }}>
-          Backend: {API_BASE}
-        </p>
-        {error && (
-          <p style={{ margin: "8px 0 0 0", fontSize: 12, color: "red" }}>
-            ⚠️ {error}
-          </p>
-        )}
-      </div>
+    return jsonify({
+        "status": "ok",
+        "order": fake_order
+    }), 201
 
-      <button 
-        onClick={fetchOrders}
-        style={{
-          padding: "10px 20px",
-          fontSize: 14,
-          fontWeight: "bold",
-          background: "#007bff",
-          color: "white",
-          border: "none",
-          borderRadius: 6,
-          cursor: "pointer"
-        }}
-      >
-        🔄 Refresh Now
-      </button>
 
-      {/* Orders Table */}
-      <table
-        border="1"
-        cellPadding="12"
-        style={{ 
-          marginTop: 20, 
-          width: "100%", 
-          borderCollapse: "collapse",
-          fontSize: 14
-        }}
-      >
-        <thead style={{ background: "#f8f9fa" }}>
-          <tr>
-            <th>Order ID</th>
-            <th>Customer Phone</th>
-            <th>Items</th>
-            <th>Amount (KES)</th>
-            <th>Status</th>
-            <th>Receipt</th>
-            <th>Created At</th>
-          </tr>
-        </thead>
-        <tbody>
-          {orders.length === 0 ? (
-            <tr>
-              <td colSpan="7" align="center" style={{ padding: 30, color: "#999" }}>
-                {apiOnline ? "No orders yet. Orders will appear here when customers message WhatsApp." : "Cannot load orders - API is offline"}
-              </td>
-            </tr>
-          ) : (
-            orders.map((o, index) => (
-              <tr key={o.id || index} style={{ 
-                background: o.status === 'paid' ? '#d4edda' : 
-                           o.status === 'awaiting_payment' ? '#fff3cd' : 'white'
-              }}>
-                <td style={{ fontFamily: "monospace", fontWeight: "bold" }}>
-                  {o.id || "MISSING_ID"}
-                </td>
-                <td>{o.customer_phone || "—"}</td>
-                <td>{o.items || o.raw_message || "—"}</td>
-                <td style={{ fontWeight: "bold" }}>
-                  {o.amount ? `KES ${o.amount.toLocaleString()}` : "—"}
-                </td>
-                <td>
-                  <span style={{
-                    padding: "4px 8px",
-                    borderRadius: 4,
-                    fontSize: 11,
-                    fontWeight: "bold",
-                    background: o.status === 'paid' ? '#28a745' : 
-                               o.status === 'awaiting_payment' ? '#ffc107' : '#6c757d',
-                    color: 'white'
-                  }}>
-                    {(o.status || "UNKNOWN").toUpperCase()}
-                  </span>
-                </td>
-                <td style={{ fontFamily: "monospace", fontSize: 12 }}>
-                  {o.receipt_number || o.mpesa_receipt || "—"}
-                </td>
-                <td style={{ fontSize: 12, color: "#666" }}>
-                  {formatTime(o.created_at || o.timestamp)}
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-
-      {/* Stats Summary */}
-      {orders.length > 0 && (
-        <div style={{ 
-          marginTop: 20, 
-          padding: 16, 
-          background: "#f8f9fa", 
-          borderRadius: 8,
-          display: "flex",
-          gap: 20,
-          justifyContent: "space-around"
-        }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 24, fontWeight: "bold" }}>{orders.length}</div>
-            <div style={{ fontSize: 12, color: "#666" }}>Total Orders</div>
-          </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 24, fontWeight: "bold", color: "#28a745" }}>
-              {orders.filter(o => o.status === 'paid').length}
-            </div>
-            <div style={{ fontSize: 12, color: "#666" }}>Paid</div>
-          </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 24, fontWeight: "bold", color: "#ffc107" }}>
-              {orders.filter(o => o.status === 'awaiting_payment').length}
-            </div>
-            <div style={{ fontSize: 12, color: "#666" }}>Pending</div>
-          </div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 24, fontWeight: "bold", color: "#28a745" }}>
-              KES {orders.filter(o => o.status === 'paid').reduce((sum, o) => sum + (o.amount || 0), 0).toLocaleString()}
-            </div>
-            <div style={{ fontSize: 12, color: "#666" }}>Total Revenue</div>
-          </div>
-        </div>
-      )}
-
-      {/* Debug Panel */}
-      <details style={{ marginTop: 30 }}>
-        <summary style={{ 
-          cursor: "pointer", 
-          fontWeight: "bold", 
-          padding: 8,
-          background: "#f0f0f0",
-          borderRadius: 4
-        }}>
-          🧪 Raw API Response (Click to expand)
-        </summary>
-        <pre
-          style={{
-            background: "#1e1e1e",
-            color: "#4ec9b0",
-            padding: 16,
-            maxHeight: 400,
-            overflow: "auto",
-            fontSize: 12,
-            borderRadius: 4,
-            marginTop: 8
-          }}
-        >
-          {JSON.stringify(rawPayload, null, 2) || "No data yet"}
-        </pre>
-      </details>
-    </div>
-  );
-}
-
-export default App;
+if __name__ == "__main__":
+    app.run(debug=True)
