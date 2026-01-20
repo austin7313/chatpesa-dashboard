@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { io } from "socket.io-client";
 
 const API_BASE = process.env.REACT_APP_API_BASE || "https://chatpesa-whatsapp.onrender.com";
 
@@ -11,8 +12,23 @@ function App() {
   useEffect(() => {
     checkHealth();
     fetchOrders();
-    const interval = setInterval(fetchOrders, 5000);
-    return () => clearInterval(interval);
+
+    // WebSocket setup
+    const socket = io(API_BASE);
+    socket.on("connect", () => console.log("WebSocket connected"));
+    socket.on("disconnect", () => console.log("WebSocket disconnected"));
+
+    socket.on("new_order", (order) => {
+      setOrders((prev) => [...prev, order]);
+      setRawPayload({ ...rawPayload, orders: [...orders, order] });
+    });
+
+    socket.on("payment_update", (updatedOrder) => {
+      setOrders((prev) => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+      setRawPayload({ ...rawPayload, orders: orders.map(o => o.id === updatedOrder.id ? updatedOrder : o) });
+    });
+
+    return () => socket.disconnect();
   }, []);
 
   const checkHealth = async () => {
@@ -31,14 +47,7 @@ function App() {
       const res = await fetch(`${API_BASE}/orders`);
       const data = await res.json();
       setRawPayload(data);
-
-      if (data.orders && Array.isArray(data.orders)) {
-        setOrders(data.orders);
-        setError(null);
-      } else {
-        setOrders([]);
-        setError("API returned unexpected format");
-      }
+      setOrders(data.orders || []);
     } catch (e) {
       setError(`Failed to load orders: ${e.message}`);
     }
@@ -57,7 +66,7 @@ function App() {
 
   return (
     <div style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
-      <h1>💳 ChatPesa Dashboard</h1>
+      <h1>💳 ChatPesa Dashboard (Real-Time)</h1>
 
       <div style={{
         padding: 12,
@@ -72,8 +81,6 @@ function App() {
         <p style={{ margin: "4px 0 0 0", fontSize: 12, color: "#666" }}>Backend: {API_BASE}</p>
         {error && <p style={{ margin: "8px 0 0 0", fontSize: 12, color: "red" }}>⚠️ {error}</p>}
       </div>
-
-      <button onClick={fetchOrders} style={{ padding: "10px 20px", fontSize: 14, fontWeight: "bold", background: "#007bff", color: "white", border: "none", borderRadius: 6, cursor: "pointer" }}>🔄 Refresh Now</button>
 
       <table border="1" cellPadding="12" style={{ marginTop: 20, width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
         <thead style={{ background: "#f8f9fa" }}>
@@ -96,15 +103,12 @@ function App() {
               </td>
             </tr>
           ) : (
-            orders.map((o, index) => (
-              <tr key={o.id || index} style={{
-                background: o.status === 'paid' ? '#d4edda' :
-                           o.status === 'awaiting_payment' ? '#fff3cd' : 'white'
-              }}>
-                <td style={{ fontFamily: "monospace", fontWeight: "bold" }}>{o.id || "MISSING_ID"}</td>
-                <td>{o.customer_phone || "—"}</td>
+            orders.map((o) => (
+              <tr key={o.id} style={{ background: o.status === 'paid' ? '#d4edda' : '#fff3cd' }}>
+                <td style={{ fontFamily: "monospace", fontWeight: "bold" }}>{o.id}</td>
+                <td>{o.customer_phone}</td>
                 <td>{o.name || "—"}</td>
-                <td>{o.items || o.raw_message || "—"}</td>
+                <td>{o.items || o.raw_message}</td>
                 <td style={{ fontWeight: "bold" }}>{o.amount ? `KES ${o.amount.toLocaleString()}` : "—"}</td>
                 <td>
                   <span style={{
@@ -116,20 +120,13 @@ function App() {
                     color: 'white'
                   }}>{(o.status || "UNKNOWN").toUpperCase()}</span>
                 </td>
-                <td style={{ fontFamily: "monospace", fontSize: 12 }}>{o.receipt_number || "—"}</td>
-                <td style={{ fontSize: 12, color: "#666" }}>{formatTime(o.created_at || o.timestamp)}</td>
+                <td style={{ fontFamily: "monospace", fontSize: 12 }}>{o.receipt_number}</td>
+                <td style={{ fontSize: 12, color: "#666" }}>{formatTime(o.created_at)}</td>
               </tr>
             ))
           )}
         </tbody>
       </table>
-
-      <details style={{ marginTop: 30 }}>
-        <summary style={{ cursor: "pointer", fontWeight: "bold", padding: 8, background: "#f0f0f0", borderRadius: 4 }}>🧪 Raw API Response</summary>
-        <pre style={{ background: "#1e1e1e", color: "#4ec9b0", padding: 16, maxHeight: 400, overflow: "auto", fontSize: 12, borderRadius: 4, marginTop: 8 }}>
-          {JSON.stringify(rawPayload, null, 2) || "No data yet"}
-        </pre>
-      </details>
     </div>
   );
 }
