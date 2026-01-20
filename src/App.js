@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-const API_BASE = "https://chatpesa-whatsapp.onrender.com"; // Must match Flask
+const API_BASE = process.env.REACT_APP_API_BASE || "https://chatpesa-whatsapp.onrender.com";
 
 function App() {
   const [orders, setOrders] = useState([]);
@@ -11,7 +11,10 @@ function App() {
   useEffect(() => {
     checkHealth();
     fetchOrders();
-    const interval = setInterval(fetchOrders, 5000);
+    const interval = setInterval(() => {
+      checkHealth();
+      fetchOrders();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -41,16 +44,19 @@ function App() {
       }
     } catch (e) {
       setError(`Failed to load orders: ${e.message}`);
-      setOrders([]);
     }
   };
 
+  // Format ISO timestamp to EAT (UTC+3)
   const formatTime = (iso) => {
     if (!iso) return "—";
     try {
       const date = new Date(iso);
-      const eatDate = new Date(date.getTime() + 3 * 60 * 60 * 1000); // UTC+3
-      return eatDate.toLocaleString("en-KE", { dateStyle: "short", timeStyle: "short" });
+      const eatDate = new Date(date.getTime() + 3 * 60 * 60 * 1000);
+      return eatDate.toLocaleString("en-KE", {
+        dateStyle: "short",
+        timeStyle: "short",
+      });
     } catch {
       return iso;
     }
@@ -60,15 +66,19 @@ function App() {
     <div style={{ padding: 24, fontFamily: "Arial, sans-serif" }}>
       <h1>💳 ChatPesa Dashboard</h1>
 
-      <div style={{
-        padding: 12,
-        marginBottom: 20,
-        borderRadius: 8,
-        background: apiOnline ? "#d4edda" : "#f8d7da",
-        border: `1px solid ${apiOnline ? "#28a745" : "#dc3545"}`
-      }}>
+      {/* Status Bar */}
+      <div
+        style={{
+          padding: 12,
+          marginBottom: 20,
+          borderRadius: 8,
+          background: apiOnline ? "#d4edda" : "#f8d7da",
+          border: `1px solid ${apiOnline ? "#28a745" : "#dc3545"}`,
+        }}
+      >
         <p style={{ margin: 0 }}>
-          System Status: <strong style={{ color: apiOnline ? "green" : "red" }}>
+          System Status:{" "}
+          <strong style={{ color: apiOnline ? "green" : "red" }}>
             {apiOnline ? "✅ API ONLINE" : "❌ API OFFLINE"}
           </strong>
         </p>
@@ -82,20 +92,33 @@ function App() {
         )}
       </div>
 
-      <button onClick={fetchOrders} style={{
-        padding: "10px 20px",
-        fontSize: 14,
-        fontWeight: "bold",
-        background: "#007bff",
-        color: "white",
-        border: "none",
-        borderRadius: 6,
-        cursor: "pointer"
-      }}>
+      <button
+        onClick={fetchOrders}
+        style={{
+          padding: "10px 20px",
+          fontSize: 14,
+          fontWeight: "bold",
+          background: "#007bff",
+          color: "white",
+          border: "none",
+          borderRadius: 6,
+          cursor: "pointer",
+        }}
+      >
         🔄 Refresh Now
       </button>
 
-      <table border="1" cellPadding="12" style={{ marginTop: 20, width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+      {/* Orders Table */}
+      <table
+        border="1"
+        cellPadding="12"
+        style={{
+          marginTop: 20,
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: 14,
+        }}
+      >
         <thead style={{ background: "#f8f9fa" }}>
           <tr>
             <th>Order ID</th>
@@ -111,43 +134,92 @@ function App() {
         <tbody>
           {orders.length === 0 ? (
             <tr>
-              <td colSpan="8" align="center" style={{ padding: 30, color: "#999" }}>
+              <td
+                colSpan="8"
+                align="center"
+                style={{ padding: 30, color: "#999" }}
+              >
                 {apiOnline ? "No orders yet." : "Cannot load orders - API is offline"}
               </td>
             </tr>
           ) : (
-            orders.map((o) => (
-              <tr key={o.id} style={{
-                background: o.status === 'paid' ? '#d4edda' : o.status === 'awaiting_payment' ? '#fff3cd' : 'white'
-              }}>
-                <td style={{ fontFamily: "monospace", fontWeight: "bold" }}>{o.id}</td>
+            orders.map((o, index) => (
+              <tr
+                key={o.id || index}
+                style={{
+                  background:
+                    o.status === "paid"
+                      ? "#d4edda"
+                      : o.status === "awaiting_payment"
+                      ? "#fff3cd"
+                      : "white",
+                }}
+              >
+                <td style={{ fontFamily: "monospace", fontWeight: "bold" }}>
+                  {o.id || "MISSING_ID"}
+                </td>
                 <td>{o.customer_phone || "—"}</td>
                 <td>{o.name || "—"}</td>
-                <td>{o.items || "—"}</td>
-                <td style={{ fontWeight: "bold" }}>{o.amount ? `KES ${o.amount.toLocaleString()}` : "—"}</td>
-                <td>
-                  <span style={{
-                    padding: "4px 8px",
-                    borderRadius: 4,
-                    fontSize: 11,
-                    fontWeight: "bold",
-                    background: o.status === 'paid' ? '#28a745' : o.status === 'awaiting_payment' ? '#ffc107' : '#6c757d',
-                    color: 'white'
-                  }}>{(o.status || "UNKNOWN").toUpperCase()}</span>
+                <td>{o.items || o.raw_message || "—"}</td>
+                <td style={{ fontWeight: "bold" }}>
+                  {o.amount ? `KES ${o.amount.toLocaleString()}` : "—"}
                 </td>
-                <td style={{ fontFamily: "monospace", fontSize: 12 }}>{o.receipt_number || "—"}</td>
-                <td style={{ fontSize: 12, color: "#666" }}>{formatTime(o.created_at)}</td>
+                <td>
+                  <span
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: 4,
+                      fontSize: 11,
+                      fontWeight: "bold",
+                      background:
+                        o.status === "paid"
+                          ? "#28a745"
+                          : o.status === "awaiting_payment"
+                          ? "#ffc107"
+                          : "#6c757d",
+                      color: "white",
+                    }}
+                  >
+                    {(o.status || "UNKNOWN").toUpperCase()}
+                  </span>
+                </td>
+                <td style={{ fontFamily: "monospace", fontSize: 12 }}>
+                  {o.receipt_number || o.mpesa_receipt || "—"}
+                </td>
+                <td style={{ fontSize: 12, color: "#666" }}>
+                  {formatTime(o.created_at || o.timestamp)}
+                </td>
               </tr>
             ))
           )}
         </tbody>
       </table>
 
+      {/* Raw Debug */}
       <details style={{ marginTop: 30 }}>
-        <summary style={{ cursor: "pointer", fontWeight: "bold", padding: 8, background: "#f0f0f0", borderRadius: 4 }}>
+        <summary
+          style={{
+            cursor: "pointer",
+            fontWeight: "bold",
+            padding: 8,
+            background: "#f0f0f0",
+            borderRadius: 4,
+          }}
+        >
           🧪 Raw API Response
         </summary>
-        <pre style={{ background: "#1e1e1e", color: "#4ec9b0", padding: 16, maxHeight: 400, overflow: "auto", fontSize: 12 }}>
+        <pre
+          style={{
+            background: "#1e1e1e",
+            color: "#4ec9b0",
+            padding: 16,
+            maxHeight: 400,
+            overflow: "auto",
+            fontSize: 12,
+            borderRadius: 4,
+            marginTop: 8,
+          }}
+        >
           {JSON.stringify(rawPayload, null, 2) || "No data yet"}
         </pre>
       </details>
