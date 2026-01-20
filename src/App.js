@@ -1,119 +1,119 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from datetime import datetime
-import json
-import os
+import React, { useEffect, useState } from "react";
 
-app = Flask(__name__)
-CORS(app)
+const API_BASE = process.env.REACT_APP_API_BASE || "https://chatpesa-whatsapp.onrender.com";
 
-DATA_FILE = "orders.json"
+function App() {
+  const [orders, setOrders] = useState([]);
+  const [apiOnline, setApiOnline] = useState(false);
+  const [rawPayload, setRawPayload] = useState(null);
 
-# ------------------------
-# Helpers
-# ------------------------
+  useEffect(() => {
+    checkHealth();
+    fetchOrders();
+    const i = setInterval(fetchOrders, 5000);
+    return () => clearInterval(i);
+  }, []);
 
-def load_orders():
-    if not os.path.exists(DATA_FILE):
-        return []
-    with open(DATA_FILE, "r") as f:
-        try:
-            return json.load(f)
-        except json.JSONDecodeError:
-            return []
-
-def save_orders(orders):
-    with open(DATA_FILE, "w") as f:
-        json.dump(orders, f, indent=2)
-
-def generate_order_id(orders):
-    if not orders:
-        return "ORD-0001"
-    last_id = orders[-1].get("id", "ORD-0000")
-    try:
-        num = int(last_id.split("-")[1])
-    except:
-        num = len(orders)
-    return f"ORD-{num + 1:04d}"
-
-# ------------------------
-# Routes
-# ------------------------
-
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok"}), 200
-
-
-@app.route("/orders", methods=["GET"])
-def get_orders():
-    orders = load_orders()
-    return jsonify({
-        "status": "ok",
-        "orders": orders
-    }), 200
-
-
-@app.route("/orders", methods=["POST"])
-def create_order():
-    data = request.json or {}
-    orders = load_orders()
-
-    order_id = generate_order_id(orders)
-    created_at = datetime.utcnow().isoformat()
-
-    order = {
-        "id": order_id,
-        "customer_phone": data.get("customer_phone", "unknown"),
-        "customer_name": data.get("customer_name", "Customer"),
-        "items": data.get("items", ""),
-        "amount": data.get("amount", 0),
-        "status": data.get("status", "awaiting_payment"),
-        "receipt_number": data.get("receipt_number"),
-        "created_at": created_at
+  const checkHealth = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/health`);
+      setApiOnline(res.ok);
+    } catch {
+      setApiOnline(false);
     }
+  };
 
-    orders.append(order)
-    save_orders(orders)
+  const fetchOrders = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/orders`);
+      const data = await res.json();
 
-    return jsonify({
-        "status": "ok",
-        "order": order
-    }), 201
+      console.log("RAW API PAYLOAD:", data);
+      setRawPayload(data);
 
-
-# ------------------------
-# Test Seed Endpoint (TEMP)
-# ------------------------
-# Hit this once to generate a fake paid order
-# You can delete this later
-
-@app.route("/debug/seed", methods=["POST"])
-def seed_order():
-    orders = load_orders()
-
-    order_id = generate_order_id(orders)
-    created_at = datetime.utcnow().isoformat()
-
-    fake_order = {
-        "id": order_id,
-        "customer_phone": "whatsapp:+254722275271",
-        "customer_name": "Test User",
-        "items": "Pilau x1",
-        "amount": 10,
-        "status": "paid",
-        "receipt_number": f"RCP{len(orders)+1:04d}",
-        "created_at": created_at
+      if (data.orders && Array.isArray(data.orders)) {
+        setOrders(data.orders);
+      }
+    } catch (e) {
+      console.error("Fetch orders failed:", e);
     }
+  };
 
-    orders.append(fake_order)
-    save_orders(orders)
+  const formatTime = (iso) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString("en-KE");
+    } catch {
+      return iso;
+    }
+  };
 
-    return jsonify({
-        "status": "ok",
-        "order": fake_order
-    }), 201
+  return (
+    <div style={{ padding: 24, fontFamily: "Arial" }}>
+      <h1>💳 ChatPesa Dashboard</h1>
 
+      <p>
+        System Status:{" "}
+        <strong style={{ color: apiOnline ? "green" : "red" }}>
+          {apiOnline ? "API ONLINE" : "API OFFLINE"}
+        </strong>
+      </p>
 
-if __name__ == "__main__":
-    app.run(debug=True)
+      <button onClick={fetchOrders}>🔄 Refresh</button>
+
+      <table
+        border="1"
+        cellPadding="8"
+        style={{ marginTop: 20, width: "100%", borderCollapse: "collapse" }}
+      >
+        <thead>
+          <tr>
+            <th>Order ID</th>
+            <th>Phone</th>
+            <th>Amount (KES)</th>
+            <th>Status</th>
+            <th>Receipt</th>
+            <th>Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {orders.length === 0 ? (
+            <tr>
+              <td colSpan="6" align="center">
+                No orders yet
+              </td>
+            </tr>
+          ) : (
+            orders.map((o) => (
+              <tr key={o.id || Math.random()}>
+                <td>{o.id || "MISSING_ID"}</td>
+                <td>{o.customer_phone}</td>
+                <td>{o.amount}</td>
+                <td>{(o.status || "").toUpperCase()}</td>
+                <td>{o.receipt_number || "-"}</td>
+                <td>{formatTime(o.created_at)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+
+      {/* HARD DEBUG PANEL */}
+      <h3 style={{ marginTop: 30 }}>🧪 Raw API Payload</h3>
+      <pre
+        style={{
+          background: "#111",
+          color: "#0f0",
+          padding: 12,
+          maxHeight: 300,
+          overflow: "auto",
+          fontSize: 12,
+        }}
+      >
+        {JSON.stringify(rawPayload, null, 2)}
+      </pre>
+    </div>
+  );
+}
+
+export default App;
