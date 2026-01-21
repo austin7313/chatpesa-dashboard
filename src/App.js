@@ -3,9 +3,10 @@ import React, { useEffect, useState } from "react";
 const API_BASE = "https://chatpesa-whatsapp.onrender.com";
 
 function App() {
-  const [status, setStatus] = useState("CHECKING");
   const [orders, setOrders] = useState([]);
-  const [error, setError] = useState("");
+  const [status, setStatus] = useState("CHECKING");
+  const [error, setError] = useState(null);
+  const [raw, setRaw] = useState(null);
 
   const fetchOrders = async () => {
     try {
@@ -15,41 +16,45 @@ function App() {
       if (data.status === "ok") {
         setOrders(data.orders || []);
         setStatus("ONLINE");
-        setError("");
+        setRaw(data);
+        setError(null);
       } else {
-        setStatus("ERROR");
-        setError("Invalid API response");
+        throw new Error("API returned error");
       }
     } catch (err) {
       setStatus("OFFLINE");
-      setError("Failed to fetch API");
+      setError(err.message);
+      setRaw(null);
     }
   };
 
   useEffect(() => {
+    // Initial load
     fetchOrders();
+
+    // Auto-refresh every 5 seconds (SAFE POLLING)
+    const interval = setInterval(fetchOrders, 5000);
+
+    return () => clearInterval(interval);
   }, []);
 
   return (
-    <div style={{ padding: 30, fontFamily: "Arial" }}>
+    <div style={{ padding: 20, fontFamily: "Arial" }}>
       <h2>💳 ChatPesa Dashboard</h2>
 
       <p>
         System Status:{" "}
-        {status === "ONLINE" && "✅ API ONLINE"}
-        {status === "OFFLINE" && "❌ API OFFLINE"}
-        {status === "CHECKING" && "⏳ Checking..."}
-        {status === "ERROR" && "⚠️ API ERROR"}
+        {status === "ONLINE" ? "✅ API ONLINE" : "❌ API OFFLINE"}
       </p>
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      <p>Backend: {API_BASE}</p>
 
       <button onClick={fetchOrders}>🔄 Refresh Now</button>
 
       <table
         border="1"
         cellPadding="8"
-        style={{ marginTop: 20, borderCollapse: "collapse" }}
+        style={{ marginTop: 20, width: "100%", borderCollapse: "collapse" }}
       >
         <thead>
           <tr>
@@ -57,31 +62,42 @@ function App() {
             <th>Customer Phone</th>
             <th>Name</th>
             <th>Items</th>
-            <th>Amount</th>
+            <th>Amount (KES)</th>
             <th>Status</th>
-            <th>Created At</th>
+            <th>Receipt</th>
+            <th>Created At (EAT)</th>
           </tr>
         </thead>
         <tbody>
           {orders.length === 0 ? (
             <tr>
-              <td colSpan="7">No orders yet.</td>
+              <td colSpan="8" style={{ textAlign: "center" }}>
+                No orders yet.
+              </td>
             </tr>
           ) : (
             orders.map((o) => (
               <tr key={o.id}>
                 <td>{o.id}</td>
                 <td>{o.customer_phone}</td>
-                <td>{o.customer_name || "—"}</td>
+                <td>{o.name || "—"}</td>
                 <td>{o.items}</td>
-                <td>{o.amount}</td>
+                <td>{o.amount || "—"}</td>
                 <td>{o.status}</td>
-                <td>{new Date(o.created_at).toLocaleString()}</td>
+                <td>{o.receipt_number}</td>
+                <td>
+                  {new Date(o.created_at).toLocaleString("en-KE")}
+                </td>
               </tr>
             ))
           )}
         </tbody>
       </table>
+
+      <h4 style={{ marginTop: 30 }}>🧪 Raw API Response</h4>
+      <pre>{JSON.stringify(raw, null, 2)}</pre>
+
+      {error && <p style={{ color: "red" }}>⚠️ {error}</p>}
     </div>
   );
 }
