@@ -1,103 +1,56 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-const API_BASE = "https://chatpesa-whatsapp.onrender.com";
+const API_URL = "https://YOUR-RENDER-URL.onrender.com"; 
+// ⚠️ CHANGE THIS to your real Render backend URL
 
 function App() {
   const [orders, setOrders] = useState([]);
-  const [status, setStatus] = useState("CHECKING");
-  const [error, setError] = useState(null);
-  const [raw, setRaw] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const fetchOrders = async () => {
     try {
-      const res = await fetch(`${API_BASE}/orders`);
+      const res = await fetch(`${API_URL}/orders`);
       const data = await res.json();
-
-      if (data.status === "ok") {
-        setOrders(data.orders || []);
-        setStatus("ONLINE");
-        setRaw(data);
-        setError(null);
-      } else {
-        throw new Error("API returned error");
-      }
+      setOrders(data.orders || []);
+      setLoading(false);
     } catch (err) {
-      setStatus("OFFLINE");
-      setError(err.message);
-      setRaw(null);
+      console.error("Failed to fetch orders", err);
     }
   };
 
   useEffect(() => {
-    // Initial load
-    fetchOrders();
-
-    // Auto-refresh every 5 seconds (SAFE POLLING)
-    const interval = setInterval(fetchOrders, 5000);
-
+    fetchOrders();                 // initial load
+    const interval = setInterval(fetchOrders, 5000); // auto-refresh
     return () => clearInterval(interval);
   }, []);
 
   return (
-    <div style={{ padding: 20, fontFamily: "Arial" }}>
-      <h2>💳 ChatPesa Dashboard</h2>
+    <div style={{ padding: 30, fontFamily: "Arial" }}>
+      <h1>📊 ChatPesa Dashboard</h1>
 
-      <p>
-        System Status:{" "}
-        {status === "ONLINE" ? "✅ API ONLINE" : "❌ API OFFLINE"}
-      </p>
+      {loading && <p>Loading orders...</p>}
 
-      <p>Backend: {API_BASE}</p>
+      {!loading && orders.length === 0 && (
+        <p>No orders yet.</p>
+      )}
 
-      <button onClick={fetchOrders}>🔄 Refresh Now</button>
-
-      <table
-        border="1"
-        cellPadding="8"
-        style={{ marginTop: 20, width: "100%", borderCollapse: "collapse" }}
-      >
-        <thead>
-          <tr>
-            <th>Order ID</th>
-            <th>Customer Phone</th>
-            <th>Name</th>
-            <th>Items</th>
-            <th>Amount (KES)</th>
-            <th>Status</th>
-            <th>Receipt</th>
-            <th>Created At (EAT)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {orders.length === 0 ? (
-            <tr>
-              <td colSpan="8" style={{ textAlign: "center" }}>
-                No orders yet.
-              </td>
-            </tr>
-          ) : (
-            orders.map((o) => (
-              <tr key={o.id}>
-                <td>{o.id}</td>
-                <td>{o.customer_phone}</td>
-                <td>{o.name || "—"}</td>
-                <td>{o.items}</td>
-                <td>{o.amount || "—"}</td>
-                <td>{o.status}</td>
-                <td>{o.receipt_number}</td>
-                <td>
-                  {new Date(o.created_at).toLocaleString("en-KE")}
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-
-      <h4 style={{ marginTop: 30 }}>🧪 Raw API Response</h4>
-      <pre>{JSON.stringify(raw, null, 2)}</pre>
-
-      {error && <p style={{ color: "red" }}>⚠️ {error}</p>}
+      {orders.map((order) => (
+        <div
+          key={order.id}
+          style={{
+            border: "1px solid #ddd",
+            padding: 15,
+            marginBottom: 10,
+            borderRadius: 6
+          }}
+        >
+          <strong>Order ID:</strong> {order.id}<br />
+          <strong>Customer:</strong> {order.customer}<br />
+          <strong>Items:</strong> {order.items}<br />
+          <strong>Amount:</strong> KES {order.amount}<br />
+          <strong>Status:</strong> {order.status}
+        </div>
+      ))}
     </div>
   );
 }
