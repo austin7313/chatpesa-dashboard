@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 
-const API_URL = "https://YOUR-RENDER-URL.onrender.com"; 
-// ⚠️ CHANGE THIS to your real Render backend URL
+const API_URL = "https://chatpesa-whatsapp.onrender.com";
 
-function App() {
+export default function App() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -12,47 +11,43 @@ function App() {
       const res = await fetch(`${API_URL}/orders`);
       const data = await res.json();
       setOrders(data.orders || []);
+    } catch (e) {
+      console.error("Fetch failed", e);
+    } finally {
       setLoading(false);
-    } catch (err) {
-      console.error("Failed to fetch orders", err);
     }
   };
 
   useEffect(() => {
-    fetchOrders();                 // initial load
-    const interval = setInterval(fetchOrders, 5000); // auto-refresh
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 5000); // auto refresh
     return () => clearInterval(interval);
   }, []);
 
+  if (loading) return <h2>Loading orders...</h2>;
+
   return (
-    <div style={{ padding: 30, fontFamily: "Arial" }}>
-      <h1>📊 ChatPesa Dashboard</h1>
+    <div style={{ padding: 20 }}>
+      <h1>💳 ChatPesa Dashboard</h1>
 
-      {loading && <p>Loading orders...</p>}
+      {orders.length === 0 && <p>No orders yet.</p>}
 
-      {!loading && orders.length === 0 && (
-        <p>No orders yet.</p>
-      )}
-
-      {orders.map((order) => (
+      {orders.map(order => (
         <div
           key={order.id}
           style={{
             border: "1px solid #ddd",
-            padding: 15,
-            marginBottom: 10,
-            borderRadius: 6
+            padding: 10,
+            marginBottom: 10
           }}
         >
-          <strong>Order ID:</strong> {order.id}<br />
-          <strong>Customer:</strong> {order.customer}<br />
-          <strong>Items:</strong> {order.items}<br />
-          <strong>Amount:</strong> KES {order.amount}<br />
-          <strong>Status:</strong> {order.status}
+          <strong>{order.id}</strong><br />
+          {order.customer}<br />
+          {order.items}<br />
+          <b>KES {order.amount}</b><br />
+          Status: {order.status}
         </div>
       ))}
     </div>
   );
 }
-
-export default App;
