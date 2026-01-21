@@ -10,12 +10,8 @@ function App() {
     try {
       const res = await fetch(`${API_URL}/orders`);
       const data = await res.json();
-      if (data.status === "ok") {
-        setOrders(data.orders);
-        setApiOnline(true);
-      } else {
-        setApiOnline(false);
-      }
+      setOrders(data.orders || []);
+      setApiOnline(true);
     } catch {
       setApiOnline(false);
     }
@@ -23,23 +19,23 @@ function App() {
 
   useEffect(() => {
     fetchOrders();
-    const i = setInterval(fetchOrders, 5000);
-    return () => clearInterval(i);
+    const interval = setInterval(fetchOrders, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const statusColor = (s) =>
-    s === "PAID" ? "green" : s === "AWAITING_PAYMENT" ? "orange" : "red";
+    s === "PAID" ? "green" : s === "AWAITING_PAYMENT" ? "orange" : "gray";
 
   return (
     <div style={{ padding: 24, fontFamily: "Arial" }}>
       <h2>ChatPesa Dashboard</h2>
 
-      <div style={{ marginBottom: 10 }}>
+      <p>
         API Status:{" "}
-        <b style={{ color: apiOnline ? "green" : "red" }}>
+        <span style={{ color: apiOnline ? "green" : "red" }}>
           {apiOnline ? "ONLINE" : "OFFLINE"}
-        </b>
-      </div>
+        </span>
+      </p>
 
       <table width="100%" cellPadding="10" border="1">
         <thead>
@@ -55,23 +51,17 @@ function App() {
         <tbody>
           {orders.length === 0 ? (
             <tr>
-              <td colSpan="6" align="center">
-                No orders yet
-              </td>
+              <td colSpan="6" align="center">No orders yet</td>
             </tr>
           ) : (
-            orders.map((o) => (
+            orders.map(o => (
               <tr key={o.id}>
                 <td>{o.id}</td>
                 <td>{o.customer_name}</td>
                 <td>{o.items}</td>
                 <td>KES {o.amount}</td>
                 <td style={{ color: statusColor(o.status) }}>{o.status}</td>
-                <td>
-                  {o.paid_at
-                    ? new Date(o.paid_at).toLocaleString()
-                    : new Date(o.created_at).toLocaleString()}
-                </td>
+                <td>{new Date(o.created_at).toLocaleString()}</td>
               </tr>
             ))
           )}
