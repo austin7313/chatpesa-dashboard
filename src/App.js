@@ -1,105 +1,81 @@
 import React, { useEffect, useState } from "react";
-import "./App.css";
+import { io } from "socket.io-client";
+
+const API_URL = "https://chatpesa-whatsapp.onrender.com";
 
 function App() {
   const [orders, setOrders] = useState([]);
-  const [status, setStatus] = useState("offline");
-  const [raw, setRaw] = useState(null);
-  const backend = "https://chatpesa-whatsapp.onrender.com";
-
-  // Fetch orders function
-  const fetchOrders = async () => {
-    try {
-      const res = await fetch(`${backend}/orders`);
-      if (!res.ok) throw new Error("Network response not ok");
-      const data = await res.json();
-      setRaw(data);
-      setOrders(data.orders || []);
-      setStatus("online");
-    } catch (err) {
-      console.error(err);
-      setStatus("offline");
-      setRaw(null);
-      setOrders([]);
-    }
-  };
+  const [status, setStatus] = useState("CONNECTING");
 
   useEffect(() => {
-    fetchOrders();
-    // Poll every 10 seconds for updates
-    const interval = setInterval(fetchOrders, 10000);
-    return () => clearInterval(interval);
+    // 1️⃣ Fetch orders safely
+    fetch(`${API_URL}/orders`)
+      .then((res) => res.json())
+      .then((data) => {
+        setOrders(data.orders || []);
+        setStatus("API ONLINE");
+      })
+      .catch(() => {
+        setStatus("API OFFLINE");
+      });
+
+    // 2️⃣ Socket connection (NON-BLOCKING)
+    try {
+      const socket = io(API_URL, {
+        transports: ["websocket"],
+        reconnection: true,
+      });
+
+      socket.on("connect", () => {
+        console.log("Socket connected");
+      });
+
+      socket.on("order_update", (order) => {
+        setOrders((prev) => [order, ...prev]);
+      });
+
+      return () => socket.disconnect();
+    } catch (e) {
+      console.warn("Socket disabled:", e.message);
+    }
   }, []);
 
   return (
-    <div style={{ padding: "20px", fontFamily: "sans-serif" }}>
+    <div style={{ padding: 20, fontFamily: "Arial" }}>
       <h1>💳 ChatPesa Dashboard</h1>
       <p>
         System Status:{" "}
-        <span style={{ color: status === "online" ? "green" : "red" }}>
-          {status === "online" ? "✅ API ONLINE" : "❌ API OFFLINE"}
-        </span>
+        <strong>{status === "API ONLINE" ? "✅ API ONLINE" : "❌ API OFFLINE"}</strong>
       </p>
-      <p>Backend: <a href={backend}>{backend}</a></p>
-      <button onClick={fetchOrders}>🔄 Refresh Now</button>
 
-      <table
-        style={{
-          width: "100%",
-          marginTop: "20px",
-          borderCollapse: "collapse",
-          textAlign: "left",
-        }}
-      >
+      <table border="1" cellPadding="8" width="100%">
         <thead>
           <tr>
-            <th style={{ borderBottom: "1px solid #ccc", padding: "8px" }}>Order ID</th>
-            <th style={{ borderBottom: "1px solid #ccc", padding: "8px" }}>Customer Phone</th>
-            <th style={{ borderBottom: "1px solid #ccc", padding: "8px" }}>Name</th>
-            <th style={{ borderBottom: "1px solid #ccc", padding: "8px" }}>Items</th>
-            <th style={{ borderBottom: "1px solid #ccc", padding: "8px" }}>Amount (KES)</th>
-            <th style={{ borderBottom: "1px solid #ccc", padding: "8px" }}>Status</th>
-            <th style={{ borderBottom: "1px solid #ccc", padding: "8px" }}>Receipt</th>
-            <th style={{ borderBottom: "1px solid #ccc", padding: "8px" }}>Created At (EAT)</th>
+            <th>Order ID</th>
+            <th>Phone</th>
+            <th>Description</th>
+            <th>Status</th>
+            <th>Created</th>
           </tr>
         </thead>
         <tbody>
           {orders.length === 0 ? (
             <tr>
-              <td colSpan="8" style={{ padding: "8px" }}>
-                {status === "online" ? "No orders yet." : "Cannot load orders - API is offline"}
-              </td>
+              <td colSpan="5">No orders yet</td>
             </tr>
           ) : (
             orders.map((o) => (
               <tr key={o.orderId}>
-                <td style={{ padding: "8px" }}>{o.orderId}</td>
-                <td style={{ padding: "8px" }}>{o.customerPhone}</td>
-                <td style={{ padding: "8px" }}>
-                  {o.mpesaName || o.name || "—"}
-                </td>
-                <td style={{ padding: "8px" }}>{o.items || "—"}</td>
-                <td style={{ padding: "8px" }}>{o.amount || "—"}</td>
-                <td style={{ padding: "8px" }}>{o.status || "—"}</td>
-                <td style={{ padding: "8px" }}>{o.receipt || "—"}</td>
-                <td style={{ padding: "8px" }}>{o.createdAt || "—"}</td>
+                <td>{o.orderId}</td>
+                <td>{o.phone}</td>
+                <td>{o.description}</td>
+                <td>{o.status}</td>
+                <td>{o.created_at}</td>
               </tr>
             ))
           )}
         </tbody>
       </table>
-
-      <h3>🧪 Raw API Response</h3>
-      <pre
-        style={{
-          background: "#f4f4f4",
-          padding: "10px",
-          maxHeight: "300px",
-          overflow: "auto",
-        }}
-      >
-        {JSON.stringify(raw, null, 2)}
-      </pre>
     </div>
   );
 }
