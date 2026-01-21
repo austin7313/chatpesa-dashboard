@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
+import { io } from "socket.io-client";
 
 const API_URL = "https://chatpesa-whatsapp.onrender.com";
+const socket = io(API_URL, {
+  transports: ["websocket"],
+});
 
 function App() {
   const [orders, setOrders] = useState([]);
@@ -8,11 +12,14 @@ function App() {
   const [search, setSearch] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
 
-  // Fetch orders
+  // -----------------------------
+  // Fetch orders (polling backup)
+  // -----------------------------
   const fetchOrders = async () => {
     try {
       const res = await fetch(`${API_URL}/orders`);
       const data = await res.json();
+
       if (data.status === "ok") {
         setOrders(data.orders || []);
         setApiOnline(true);
@@ -24,13 +31,39 @@ function App() {
     }
   };
 
-  // Auto refresh
+  // -----------------------------
+  // Initial load + polling
+  // -----------------------------
   useEffect(() => {
     fetchOrders();
     const interval = setInterval(fetchOrders, 5000);
     return () => clearInterval(interval);
   }, []);
 
+  // -----------------------------
+  // REAL-TIME SOCKET LISTENER
+  // -----------------------------
+  useEffect(() => {
+    socket.on("connect", () => {
+      console.log("Socket connected");
+    });
+
+    socket.on("order_updated", (update) => {
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === update.id ? { ...o, status: update.status } : o
+        )
+      );
+    });
+
+    return () => {
+      socket.off("order_updated");
+    };
+  }, []);
+
+  // -----------------------------
+  // Helpers
+  // -----------------------------
   const getStatusColor = (status) => {
     switch (status) {
       case "PAID":
@@ -50,10 +83,13 @@ function App() {
       o.customer_name.toLowerCase().includes(search.toLowerCase())
   );
 
+  // -----------------------------
+  // UI
+  // -----------------------------
   return (
     <div style={{ padding: 24, fontFamily: "Inter, Arial, sans-serif" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
         <h1>💬 ChatPesa Dashboard</h1>
         <div>
           <span
@@ -62,7 +98,7 @@ function App() {
               width: 12,
               height: 12,
               borderRadius: "50%",
-              background: apiOnline ? "green" : "red",
+              background: apiOnline ? "#16a34a" : "#dc2626",
               marginRight: 8,
             }}
           />
@@ -86,18 +122,28 @@ function App() {
         }}
       />
 
-      {/* Orders Table */}
+      {/* Table */}
       <div style={{ marginTop: 20, overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f9fafb" }}>
-              {["Order ID", "Name", "Items", "Amount", "Status", "Time"].map((h) => (
-                <th key={h} style={{ padding: 12, textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                  {h}
-                </th>
-              ))}
+              {["Order ID", "Name", "Items", "Amount", "Status", "Time"].map(
+                (h) => (
+                  <th
+                    key={h}
+                    style={{
+                      padding: 12,
+                      textAlign: "left",
+                      borderBottom: "1px solid #ddd",
+                    }}
+                  >
+                    {h}
+                  </th>
+                )
+              )}
             </tr>
           </thead>
+
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr>
@@ -109,10 +155,10 @@ function App() {
               filteredOrders.map((order) => (
                 <tr
                   key={order.id}
-                  style={{ cursor: "pointer" }}
                   onClick={() => setSelectedOrder(order)}
+                  style={{ cursor: "pointer" }}
                 >
-                  <td style={{ padding: 12, color: "#2563eb", fontWeight: 600 }}>
+                  <td style={{ padding: 12, fontWeight: 600, color: "#2563eb" }}>
                     {order.id}
                   </td>
                   <td style={{ padding: 12 }}>{order.customer_name}</td>
@@ -121,8 +167,8 @@ function App() {
                   <td
                     style={{
                       padding: 12,
-                      color: getStatusColor(order.status),
                       fontWeight: "bold",
+                      color: getStatusColor(order.status),
                     }}
                   >
                     {order.status}
@@ -137,7 +183,7 @@ function App() {
         </table>
       </div>
 
-      {/* Order Modal */}
+      {/* Modal */}
       {selectedOrder && (
         <div
           onClick={() => setSelectedOrder(null)}
@@ -157,7 +203,7 @@ function App() {
               padding: 24,
               borderRadius: 12,
               width: "90%",
-              maxWidth: 400,
+              maxWidth: 420,
             }}
           >
             <h3>Order {selectedOrder.id}</h3>
