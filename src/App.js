@@ -1,4 +1,3 @@
-// App.js
 import React, { useEffect, useState } from "react";
 
 const API_URL = "https://chatpesa-whatsapp.onrender.com";
@@ -9,7 +8,7 @@ function App() {
   const [search, setSearch] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
 
-  // Fetch orders
+  // Fetch orders from backend
   const fetchOrders = async () => {
     try {
       const res = await fetch(`${API_URL}/orders`);
@@ -92,7 +91,7 @@ function App() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f9fafb" }}>
-              {["Order ID", "Name", "Phone", "Items", "Amount", "Status", "Time"].map((h) => (
+              {["Order ID", "WhatsApp / M-Pesa Name", "Phone", "Items", "Amount", "Status", "Time"].map((h) => (
                 <th key={h} style={{ padding: 12, textAlign: "left", borderBottom: "1px solid #ddd" }}>
                   {h}
                 </th>
@@ -116,8 +115,10 @@ function App() {
                   <td style={{ padding: 12, color: "#2563eb", fontWeight: 600 }}>
                     {order.id}
                   </td>
-                  <td style={{ padding: 12 }}>{order.customer_name}</td>
-                  <td style={{ padding: 12 }}>{order.customer_phone}</td>
+                  <td style={{ padding: 12 }}>
+                    {order.customer_name.startsWith("whatsapp:") ? order.phone : order.customer_name}
+                  </td>
+                  <td style={{ padding: 12 }}>{order.phone}</td>
                   <td style={{ padding: 12 }}>{order.items}</td>
                   <td style={{ padding: 12 }}>KES {order.amount}</td>
                   <td
@@ -163,8 +164,8 @@ function App() {
             }}
           >
             <h3>Order {selectedOrder.id}</h3>
-            <p><b>Name:</b> {selectedOrder.customer_name}</p>
-            <p><b>Phone:</b> {selectedOrder.customer_phone}</p>
+            <p><b>Name:</b> {selectedOrder.customer_name.startsWith("whatsapp:") ? selectedOrder.phone : selectedOrder.customer_name}</p>
+            <p><b>Phone:</b> {selectedOrder.phone}</p>
             <p><b>Items:</b> {selectedOrder.items}</p>
             <p><b>Amount:</b> KES {selectedOrder.amount}</p>
             <p>
@@ -173,7 +174,7 @@ function App() {
                 {selectedOrder.status}
               </span>
             </p>
-            <p><b>Created At:</b> {new Date(selectedOrder.created_at).toLocaleString()}</p>
+            <p><b>Time:</b> {new Date(selectedOrder.created_at).toLocaleString()}</p>
 
             <button
               onClick={() => setSelectedOrder(null)}
