@@ -1,200 +1,118 @@
 import React, { useEffect, useState } from "react";
 
-const API_URL = "https://chatpesa-whatsapp.onrender.com";
+function statusColor(status) {
+  switch (status) {
+    case "AWAITING_PAYMENT":
+      return "bg-yellow-100 text-yellow-800";
+    case "PAID":
+      return "bg-green-100 text-green-800";
+    default:
+      return "bg-gray-100 text-gray-800";
+  }
+}
 
-function App() {
+export default function Dashboard() {
   const [orders, setOrders] = useState([]);
-  const [apiOnline, setApiOnline] = useState(false);
   const [search, setSearch] = useState("");
-  const [selectedOrder, setSelectedOrder] = useState(null);
 
-  // Fetch orders from backend
-  const fetchOrders = async () => {
-    try {
-      const res = await fetch(`${API_URL}/orders`);
-      const data = await res.json();
-      if (data.status === "ok") {
-        setOrders(data.orders || []);
-        setApiOnline(true);
-      } else {
-        setApiOnline(false);
-      }
-    } catch (err) {
-      setApiOnline(false);
-    }
-  };
-
-  // Auto-refresh every 5 seconds
+  // Fetch orders every 3 seconds
   useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        const res = await fetch("/orders");
+        const data = await res.json();
+        setOrders(data.orders);
+      } catch (e) {
+        console.error("Failed to fetch orders:", e);
+      }
+    };
+
     fetchOrders();
-    const interval = setInterval(fetchOrders, 5000);
+    const interval = setInterval(fetchOrders, 3000);
     return () => clearInterval(interval);
   }, []);
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "PAID":
-        return "#16a34a";
-      case "AWAITING_PAYMENT":
-        return "#f59e0b";
-      case "FAILED":
-        return "#dc2626";
-      default:
-        return "#6b7280";
-    }
-  };
-
-  const filteredOrders = orders.filter(
-    (o) =>
-      o.id.toLowerCase().includes(search.toLowerCase()) ||
-      o.customer_name.toLowerCase().includes(search.toLowerCase())
+  // Filter orders based on search
+  const filteredOrders = orders.filter((o) =>
+    o.id.toLowerCase().includes(search.toLowerCase()) ||
+    o.phone.includes(search) ||
+    (o.customer_name && o.customer_name.toLowerCase().includes(search.toLowerCase()))
   );
 
+  // CSV Export
+  const exportCSV = () => {
+    const header = "Order ID,Customer Name,Phone,Amount,Status,Created At,Paid At,Mpesa Receipt\n";
+    const rows = filteredOrders.map(o =>
+      `${o.id},${o.customer_name || ""},${o.phone},${o.amount},${o.status},${new Date(o.created_at).toLocaleString()},${o.paid_at ? new Date(o.paid_at).toLocaleString() : ""},${o.mpesa_receipt || ""}`
+    ).join("\n");
+    const csvContent = "data:text/csv;charset=utf-8," + header + rows;
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `chatpesa_orders_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div style={{ padding: 24, fontFamily: "Inter, Arial, sans-serif" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1>ChatPesa Dashboard</h1>
-        <div>
-          <span
-            style={{
-              display: "inline-block",
-              width: 12,
-              height: 12,
-              borderRadius: "50%",
-              background: apiOnline ? "green" : "red",
-              marginRight: 8,
-            }}
-          />
-          API {apiOnline ? "ONLINE" : "OFFLINE"}
-        </div>
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">ChatPesa Dashboard – Live Orders</h1>
+
+      <div className="flex mb-4 items-center space-x-2">
+        <input
+          type="text"
+          placeholder="Search by Order ID, Name, Phone..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="border p-2 rounded w-full"
+        />
+        <button
+          onClick={exportCSV}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        >
+          Export CSV
+        </button>
       </div>
 
-      {/* Search */}
-      <input
-        type="text"
-        placeholder="Search by Order ID or Name..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{
-          marginTop: 20,
-          padding: 10,
-          width: "100%",
-          maxWidth: 400,
-          borderRadius: 8,
-          border: "1px solid #ddd",
-        }}
-      />
-
-      {/* Orders Table */}
-      <div style={{ marginTop: 20, overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ background: "#f9fafb" }}>
-              {["Order ID", "WhatsApp / M-Pesa Name", "Phone", "Items", "Amount", "Status", "Time"].map((h) => (
-                <th key={h} style={{ padding: 12, textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                  {h}
-                </th>
-              ))}
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse border border-gray-300">
+          <thead className="bg-gray-100">
+            <tr>
+              <th className="border px-2 py-1">Order ID</th>
+              <th className="border px-2 py-1">Customer Name</th>
+              <th className="border px-2 py-1">Phone</th>
+              <th className="border px-2 py-1">Amount (KES)</th>
+              <th className="border px-2 py-1">Status</th>
+              <th className="border px-2 py-1">Created At</th>
+              <th className="border px-2 py-1">Paid At</th>
+              <th className="border px-2 py-1">Mpesa Receipt</th>
             </tr>
           </thead>
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan="7" style={{ padding: 20, textAlign: "center" }}>
-                  No orders yet
-                </td>
+                <td colSpan="8" className="text-center py-4">No orders found</td>
               </tr>
             ) : (
-              filteredOrders.map((order) => (
-                <tr
-                  key={order.id}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => setSelectedOrder(order)}
-                >
-                  <td style={{ padding: 12, color: "#2563eb", fontWeight: 600 }}>
-                    {order.id}
+              filteredOrders.map((o) => (
+                <tr key={o.id} className="hover:bg-gray-50">
+                  <td className="border px-2 py-1">{o.id}</td>
+                  <td className="border px-2 py-1">{o.customer_name || "-"}</td>
+                  <td className="border px-2 py-1">{o.phone}</td>
+                  <td className="border px-2 py-1">{o.amount}</td>
+                  <td className={`border px-2 py-1 font-bold text-center ${statusColor(o.status)}`}>
+                    {o.status}
                   </td>
-                  <td style={{ padding: 12 }}>
-                    {order.customer_name.startsWith("whatsapp:") ? order.phone : order.customer_name}
-                  </td>
-                  <td style={{ padding: 12 }}>{order.phone}</td>
-                  <td style={{ padding: 12 }}>{order.items}</td>
-                  <td style={{ padding: 12 }}>KES {order.amount}</td>
-                  <td
-                    style={{
-                      padding: 12,
-                      color: getStatusColor(order.status),
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {order.status}
-                  </td>
-                  <td style={{ padding: 12 }}>
-                    {new Date(order.created_at).toLocaleString()}
-                  </td>
+                  <td className="border px-2 py-1">{new Date(o.created_at).toLocaleString()}</td>
+                  <td className="border px-2 py-1">{o.paid_at ? new Date(o.paid_at).toLocaleString() : "-"}</td>
+                  <td className="border px-2 py-1">{o.mpesa_receipt || "-"}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
-
-      {/* Order Modal */}
-      {selectedOrder && (
-        <div
-          onClick={() => setSelectedOrder(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.4)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "#fff",
-              padding: 24,
-              borderRadius: 12,
-              width: "90%",
-              maxWidth: 400,
-            }}
-          >
-            <h3>Order {selectedOrder.id}</h3>
-            <p><b>Name:</b> {selectedOrder.customer_name.startsWith("whatsapp:") ? selectedOrder.phone : selectedOrder.customer_name}</p>
-            <p><b>Phone:</b> {selectedOrder.phone}</p>
-            <p><b>Items:</b> {selectedOrder.items}</p>
-            <p><b>Amount:</b> KES {selectedOrder.amount}</p>
-            <p>
-              <b>Status:</b>{" "}
-              <span style={{ color: getStatusColor(selectedOrder.status) }}>
-                {selectedOrder.status}
-              </span>
-            </p>
-            <p><b>Time:</b> {new Date(selectedOrder.created_at).toLocaleString()}</p>
-
-            <button
-              onClick={() => setSelectedOrder(null)}
-              style={{
-                marginTop: 20,
-                padding: "10px 16px",
-                borderRadius: 8,
-                border: "none",
-                background: "#111827",
-                color: "#fff",
-                cursor: "pointer",
-              }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
-
-export default App;
