@@ -1,242 +1,226 @@
-import React, { useEffect, useState, useRef } from "react";
+import os
+import uuid
+import base64
+import datetime
+import threading
+import requests
 
-const API_URL = "https://chatpesa-whatsapp.onrender.com";
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from twilio.rest import Client
+from twilio.twiml.messaging_response import MessagingResponse
 
-function App() {
-  const [orders, setOrders] = useState([]);
-  const [apiOnline, setApiOnline] = useState(false);
-  const [search, setSearch] = useState("");
-  const [selectedOrder, setSelectedOrder] = useState(null);
-  const [toasts, setToasts] = useState([]);
-  const previousPaidRef = useRef(new Set());
+app = Flask(__name__)
+CORS(app)
 
-  // Fetch orders from backend
-  const fetchOrders = async () => {
-    try {
-      const res = await fetch(`${API_URL}/orders`);
-      const data = await res.json();
-      if (data.status === "ok") {
-        const newOrders = data.orders || [];
-        setOrders(newOrders);
-        setApiOnline(true);
+# ================= CONFIG =================
+SHORTCODE = "4031193"
+PASSKEY = "5a64ad290753ed331b662cf6d83d3149367867c102f964f522390ccbd85cb282"
 
-        // Check for newly paid orders
-        const currentPaidIds = new Set(newOrders.filter(o => o.status === "PAID").map(o => o.id));
-        currentPaidIds.forEach(id => {
-          if (!previousPaidRef.current.has(id)) {
-            const order = newOrders.find(o => o.id === id);
-            showToast(`✅ Payment received: ${order.customer_name.startsWith("whatsapp:") ? order.phone : order.customer_name} KES ${order.amount}`);
-          }
-        });
-        previousPaidRef.current = currentPaidIds;
+CONSUMER_KEY = "B05zln19QXC3OBL6YuCkdhZ8zvYqZtXP"
+CONSUMER_SECRET = "MYRasd2p9gGFcuCR"
 
-      } else {
-        setApiOnline(false);
-      }
-    } catch (err) {
-      setApiOnline(false);
-    }
-  };
+MPESA_BASE = "https://api.safaricom.co.ke"
+CALLBACK_URL = "https://chatpesa-whatsapp.onrender.com/mpesa/callback"
 
-  // Auto-refresh every 5s
-  useEffect(() => {
-    fetchOrders();
-    const interval = setInterval(fetchOrders, 5000);
-    return () => clearInterval(interval);
-  }, []);
+# Twilio WhatsApp
+TWILIO_SID = os.environ.get("TWILIO_SID")
+TWILIO_AUTH = os.environ.get("TWILIO_AUTH")
+TWILIO_WHATSAPP = "whatsapp:+YOUR_TWILIO_NUMBER"
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "PAID":
-        return "#16a34a"; // green
-      case "AWAITING_PAYMENT":
-        return "#f59e0b"; // yellow
-      case "FAILED":
-        return "#dc2626"; // red
-      default:
-        return "#6b7280"; // gray
-    }
-  };
+twilio_client = Client(TWILIO_SID, TWILIO_AUTH)
 
-  // Toast logic
-  const showToast = (message) => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, message }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
-  };
+ORDERS = {}
+SESSIONS = {}
 
-  const filteredOrders = orders.filter(
-    (o) =>
-      o.id.toLowerCase().includes(search.toLowerCase()) ||
-      o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-      (o.mpesa_receipt || "").toLowerCase().includes(search.toLowerCase())
-  );
+# ================= HELPERS =================
+def now():
+    return datetime.datetime.utcnow().isoformat()
 
-  return (
-    <div style={{ padding: 24, fontFamily: "Inter, Arial, sans-serif", background: "#f3f4f6", minHeight: "100vh" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <h1 style={{ margin: 0 }}>ChatPesa Dashboard</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span
-            style={{
-              display: "inline-block",
-              width: 12,
-              height: 12,
-              borderRadius: "50%",
-              background: apiOnline ? "#16a34a" : "#dc2626",
-            }}
-          />
-          <span style={{ fontWeight: "600", color: "#111827" }}>API {apiOnline ? "ONLINE" : "OFFLINE"}</span>
-        </div>
-      </div>
+def normalize_phone(phone):
+    phone = phone.replace("whatsapp:", "").replace("+", "").strip()
+    if phone.startswith("0"):
+        phone = "254" + phone[1:]
+    if phone.startswith("7"):
+        phone = "254" + phone
+    return phone
 
-      {/* Search */}
-      <input
-        type="text"
-        placeholder="Search by Order ID, Name, or Receipt..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{
-          padding: 10,
-          width: "100%",
-          maxWidth: 400,
-          borderRadius: 8,
-          border: "1px solid #d1d5db",
-          marginBottom: 20,
-        }}
-      />
+def mpesa_token():
+    r = requests.get(
+        "https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials",
+        auth=(CONSUMER_KEY, CONSUMER_SECRET),
+        timeout=10
+    )
+    r.raise_for_status()
+    return r.json()["access_token"]
 
-      {/* Orders List */}
-      <div style={{ display: "grid", gap: 12 }}>
-        {filteredOrders.length === 0 ? (
-          <div style={{ padding: 20, textAlign: "center", background: "#fff", borderRadius: 8, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-            No orders yet
-          </div>
-        ) : (
-          filteredOrders.map((order) => (
-            <div
-              key={order.id}
-              onClick={() => setSelectedOrder(order)}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: 16,
-                background: "#fff",
-                borderRadius: 8,
-                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                cursor: "pointer",
-                transition: "transform 0.1s",
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.01)"}
-              onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
-            >
-              <div>
-                <div style={{ fontWeight: 600, color: "#2563eb" }}>{order.id}</div>
-                <div>{order.customer_name.startsWith("whatsapp:") ? order.phone : order.customer_name}</div>
-                <div style={{ color: "#6b7280", fontSize: 14 }}>{order.phone}</div>
-              </div>
+def stk_push_async(order):
+    """Run STK push in background thread."""
+    try:
+        token = mpesa_token()
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
-              <div style={{ textAlign: "right" }}>
-                <div style={{ fontWeight: 600 }}>KES {order.amount}</div>
-                <div
-                  style={{
-                    display: "inline-block",
-                    padding: "2px 8px",
-                    borderRadius: 12,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    background: getStatusColor(order.status) + "33",
-                    color: getStatusColor(order.status),
-                    marginTop: 4,
-                  }}
-                >
-                  {order.status}
-                </div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-                  {order.mpesa_receipt || "-"}
-                </div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-                  {new Date(order.created_at).toLocaleString()}
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+        password = base64.b64encode(
+            f"{SHORTCODE}{PASSKEY}{timestamp}".encode()
+        ).decode()
 
-      {/* Toast notifications */}
-      <div style={{ position: "fixed", top: 20, right: 20, zIndex: 2000 }}>
-        {toasts.map(t => (
-          <div key={t.id} style={{
-            background: "#16a34a",
-            color: "#fff",
-            padding: "10px 16px",
-            borderRadius: 8,
-            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-            marginBottom: 8,
-            fontWeight: 600,
-            minWidth: 220
-          }}>
-            {t.message}
-          </div>
-        ))}
-      </div>
+        phone = normalize_phone(order["phone"])
 
-      {/* Order Modal */}
-      {selectedOrder && (
-        <div
-          onClick={() => setSelectedOrder(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.4)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 1000
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "#fff",
-              padding: 24,
-              borderRadius: 12,
-              width: "90%",
-              maxWidth: 400,
-            }}
-          >
-            <h3>Order {selectedOrder.id}</h3>
-            <p><b>Name:</b> {selectedOrder.customer_name.startsWith("whatsapp:") ? selectedOrder.phone : selectedOrder.customer_name}</p>
-            <p><b>Phone:</b> {selectedOrder.phone}</p>
-            <p><b>Amount:</b> KES {selectedOrder.amount}</p>
-            <p><b>Status:</b> <span style={{ color: getStatusColor(selectedOrder.status) }}>{selectedOrder.status}</span></p>
-            <p><b>Receipt:</b> {selectedOrder.mpesa_receipt || "-"}</p>
-            <p><b>Time:</b> {new Date(selectedOrder.created_at).toLocaleString()}</p>
+        payload = {
+            "BusinessShortCode": SHORTCODE,
+            "Password": password,
+            "Timestamp": timestamp,
+            "TransactionType": "CustomerPayBillOnline",
+            "Amount": int(order["amount"]),
+            "PartyA": phone,
+            "PartyB": SHORTCODE,
+            "PhoneNumber": phone,
+            "CallBackURL": CALLBACK_URL,
+            "AccountReference": order["id"],  # critical for IQ matching
+            "TransactionDesc": "ChatPesa Payment"
+        }
 
-            <button
-              onClick={() => setSelectedOrder(null)}
-              style={{
-                marginTop: 20,
-                padding: "10px 16px",
-                borderRadius: 8,
-                border: "none",
-                background: "#111827",
-                color: "#fff",
-                cursor: "pointer",
-              }}
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
 
-export default App;
+        r = requests.post(
+            f"{MPESA_BASE}/mpesa/stkpush/v1/processrequest",
+            json=payload,
+            headers=headers,
+            timeout=10
+        )
+
+        print("✅ STK STATUS:", r.status_code)
+        print("✅ STK BODY:", r.text)
+
+    except Exception as e:
+        print("❌ STK ERROR:", str(e))
+
+def send_whatsapp(phone, message):
+    try:
+        twilio_client.messages.create(
+            from_=TWILIO_WHATSAPP,
+            to=phone,
+            body=message
+        )
+    except Exception as e:
+        print("❌ WhatsApp send error:", str(e))
+
+# ================= WHATSAPP =================
+@app.route("/webhook/whatsapp", methods=["POST"])
+def whatsapp():
+    body = request.values.get("Body", "").strip().upper()
+    phone = request.values.get("From")
+
+    resp = MessagingResponse()
+    msg = resp.message()
+
+    session = SESSIONS.get(phone, {"step": "START"})
+
+    if session["step"] == "START":
+        msg.body(
+            "👋 Welcome to ChatPesa\n\n"
+            "Reply 1️⃣ to make a payment"
+        )
+        session["step"] = "MENU"
+
+    elif session["step"] == "MENU" and body == "1":
+        msg.body("💰 Enter amount to pay (KES)\nMinimum: 10")
+        session["step"] = "AMOUNT"
+
+    elif session["step"] == "AMOUNT":
+        try:
+            amount = int(body)
+            if amount < 10:
+                raise ValueError
+        except:
+            msg.body("❌ Invalid amount. Enter a number ≥ 10")
+            return str(resp)
+
+        order_id = "CP" + uuid.uuid4().hex[:6].upper()
+
+        ORDERS[order_id] = {
+            "id": order_id,
+            "phone": phone,
+            "amount": amount,
+            "status": "AWAITING_PAYMENT",
+            "customer_name": phone,
+            "created_at": now()
+        }
+
+        session["order_id"] = order_id
+        session["step"] = "CONFIRM"
+
+        msg.body(
+            f"🧾 Order ID: {order_id}\n"
+            f"Amount: KES {amount}\n\n"
+            f"Reply PAY to receive M-Pesa prompt"
+        )
+
+    elif session["step"] == "CONFIRM" and body == "PAY":
+        order = ORDERS.get(session["order_id"])
+        msg.body("📲 Sending M-Pesa prompt. Enter your PIN.")
+        threading.Thread(target=stk_push_async, args=(order,)).start()
+        session["step"] = "DONE"
+
+    else:
+        msg.body("Reply 1️⃣ to start a payment")
+
+    SESSIONS[phone] = session
+    return str(resp), 200
+
+# ================= MPESA CALLBACK =================
+@app.route("/mpesa/callback", methods=["POST"])
+def mpesa_callback():
+    data = request.json
+    cb = data["Body"]["stkCallback"]
+
+    if cb["ResultCode"] == 0:
+        meta = cb["CallbackMetadata"]["Item"]
+
+        receipt = next(i["Value"] for i in meta if i["Name"] == "MpesaReceiptNumber")
+        phone = str(next(i["Value"] for i in meta if i["Name"] == "PhoneNumber"))
+        amount = next(i["Value"] for i in meta if i["Name"] == "Amount")
+        account_ref = next((i["Value"] for i in meta if i["Name"] == "AccountReference"), None)
+
+        order = None
+
+        # 50k IQ MATCH: first by AccountReference
+        if account_ref and account_ref in ORDERS:
+            order = ORDERS[account_ref]
+        else:
+            # fallback: match by phone + amount
+            for o in ORDERS.values():
+                if o["status"] == "AWAITING_PAYMENT" and normalize_phone(o["phone"]) == phone and o["amount"] == amount:
+                    order = o
+                    break
+
+        if order:
+            order["status"] = "PAID"
+            order["mpesa_receipt"] = receipt
+            order["paid_at"] = now()
+
+            # Real-time WhatsApp confirmation
+            send_whatsapp(order["phone"],
+                          f"✅ Payment Received!\n"
+                          f"Order ID: {order['id']}\n"
+                          f"Amount: KES {order['amount']}\n"
+                          f"Receipt: {receipt}")
+
+    return jsonify({"status": "ok"})
+
+# ================= DASHBOARD =================
+@app.route("/orders")
+def orders():
+    return jsonify({"status": "ok", "orders": list(ORDERS.values())})
+
+@app.route("/")
+def root():
+    return "ChatPesa API ONLINE", 200
+
+# ================= SERVER =================
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
