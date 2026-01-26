@@ -1,118 +1,195 @@
 import React, { useEffect, useState } from "react";
 
-function statusColor(status) {
-  switch (status) {
-    case "AWAITING_PAYMENT":
-      return "bg-yellow-100 text-yellow-800";
-    case "PAID":
-      return "bg-green-100 text-green-800";
-    default:
-      return "bg-gray-100 text-gray-800";
-  }
-}
+const API_URL = "https://chatpesa-whatsapp.onrender.com";
 
-export default function Dashboard() {
+function App() {
   const [orders, setOrders] = useState([]);
+  const [apiOnline, setApiOnline] = useState(false);
   const [search, setSearch] = useState("");
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
-  // Fetch orders every 3 seconds
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        const res = await fetch("/orders");
-        const data = await res.json();
-        setOrders(data.orders);
-      } catch (e) {
-        console.error("Failed to fetch orders:", e);
+  const fetchOrders = async () => {
+    try {
+      const res = await fetch(`${API_URL}/orders`);
+      const data = await res.json();
+      if (data.status === "ok") {
+        setOrders(data.orders || []);
+        setApiOnline(true);
+      } else {
+        setApiOnline(false);
       }
-    };
-
-    fetchOrders();
-    const interval = setInterval(fetchOrders, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Filter orders based on search
-  const filteredOrders = orders.filter((o) =>
-    o.id.toLowerCase().includes(search.toLowerCase()) ||
-    o.phone.includes(search) ||
-    (o.customer_name && o.customer_name.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  // CSV Export
-  const exportCSV = () => {
-    const header = "Order ID,Customer Name,Phone,Amount,Status,Created At,Paid At,Mpesa Receipt\n";
-    const rows = filteredOrders.map(o =>
-      `${o.id},${o.customer_name || ""},${o.phone},${o.amount},${o.status},${new Date(o.created_at).toLocaleString()},${o.paid_at ? new Date(o.paid_at).toLocaleString() : ""},${o.mpesa_receipt || ""}`
-    ).join("\n");
-    const csvContent = "data:text/csv;charset=utf-8," + header + rows;
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `chatpesa_orders_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    } catch {
+      setApiOnline(false);
+    }
   };
 
+  useEffect(() => {
+    fetchOrders();
+    const i = setInterval(fetchOrders, 5000);
+    return () => clearInterval(i);
+  }, []);
+
+  const paidOrders = orders.filter(o => o.status === "PAID");
+  const pendingOrders = orders.filter(o => o.status === "AWAITING_PAYMENT");
+  const totalPaid = paidOrders.reduce((s, o) => s + o.amount, 0);
+
+  const filteredOrders = orders.filter(
+    o =>
+      o.id.toLowerCase().includes(search.toLowerCase()) ||
+      o.customer_name.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const badgeStyle = status => ({
+    padding: "4px 10px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 600,
+    background:
+      status === "PAID" ? "#dcfce7" :
+      status === "AWAITING_PAYMENT" ? "#fef3c7" :
+      "#e5e7eb",
+    color:
+      status === "PAID" ? "#166534" :
+      status === "AWAITING_PAYMENT" ? "#92400e" :
+      "#374151"
+  });
+
   return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4">ChatPesa Dashboard – Live Orders</h1>
+    <div style={{ background: "#f3f4f6", minHeight: "100vh", padding: 24 }}>
+      <div style={{
+        maxWidth: 1100,
+        margin: "0 auto",
+        background: "#fff",
+        borderRadius: 12,
+        padding: 24,
+        border: "1px solid #e5e7eb"
+      }}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 24 }}>
+          <div>
+            <h2 style={{ margin: 0 }}>ChatPesa Dashboard</h2>
+            <p style={{ margin: "6px 0", color: "#6b7280", fontSize: 14 }}>
+              Live WhatsApp → M-Pesa payments
+            </p>
+          </div>
+          <div style={{ fontSize: 13, color: apiOnline ? "#166534" : "#991b1b" }}>
+            ● API {apiOnline ? "ONLINE" : "OFFLINE"}
+          </div>
+        </div>
 
-      <div className="flex mb-4 items-center space-x-2">
+        {/* Modest Summary */}
+        <div style={{
+          display: "flex",
+          gap: 24,
+          fontSize: 14,
+          marginBottom: 20,
+          color: "#374151"
+        }}>
+          <div><b>{orders.length}</b> orders</div>
+          <div><b>{pendingOrders.length}</b> pending</div>
+          <div><b>KES {totalPaid.toLocaleString()}</b> collected</div>
+        </div>
+
+        {/* Search */}
         <input
-          type="text"
-          placeholder="Search by Order ID, Name, Phone..."
+          placeholder="Search by Order ID or Name"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="border p-2 rounded w-full"
+          onChange={e => setSearch(e.target.value)}
+          style={{
+            width: "100%",
+            maxWidth: 360,
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid #d1d5db",
+            marginBottom: 20
+          }}
         />
-        <button
-          onClick={exportCSV}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
-          Export CSV
-        </button>
-      </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse border border-gray-300">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="border px-2 py-1">Order ID</th>
-              <th className="border px-2 py-1">Customer Name</th>
-              <th className="border px-2 py-1">Phone</th>
-              <th className="border px-2 py-1">Amount (KES)</th>
-              <th className="border px-2 py-1">Status</th>
-              <th className="border px-2 py-1">Created At</th>
-              <th className="border px-2 py-1">Paid At</th>
-              <th className="border px-2 py-1">Mpesa Receipt</th>
+        {/* Table */}
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+          <thead>
+            <tr style={{ background: "#f9fafb", textAlign: "left" }}>
+              {["Order", "Customer", "Amount", "Status", "Created"].map(h => (
+                <th key={h} style={{ padding: 12, borderBottom: "1px solid #e5e7eb" }}>{h}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan="8" className="text-center py-4">No orders found</td>
+                <td colSpan={5} style={{ padding: 20, textAlign: "center", color: "#6b7280" }}>
+                  No orders
+                </td>
               </tr>
             ) : (
-              filteredOrders.map((o) => (
-                <tr key={o.id} className="hover:bg-gray-50">
-                  <td className="border px-2 py-1">{o.id}</td>
-                  <td className="border px-2 py-1">{o.customer_name || "-"}</td>
-                  <td className="border px-2 py-1">{o.phone}</td>
-                  <td className="border px-2 py-1">{o.amount}</td>
-                  <td className={`border px-2 py-1 font-bold text-center ${statusColor(o.status)}`}>
-                    {o.status}
+              filteredOrders.map(o => (
+                <tr
+                  key={o.id}
+                  onClick={() => setSelectedOrder(o)}
+                  style={{
+                    cursor: "pointer",
+                    borderBottom: "1px solid #f1f5f9"
+                  }}
+                >
+                  <td style={{ padding: 12, fontWeight: 600, color: "#2563eb" }}>{o.id}</td>
+                  <td style={{ padding: 12 }}>
+                    {o.customer_name.startsWith("whatsapp:") ? o.phone : o.customer_name}
                   </td>
-                  <td className="border px-2 py-1">{new Date(o.created_at).toLocaleString()}</td>
-                  <td className="border px-2 py-1">{o.paid_at ? new Date(o.paid_at).toLocaleString() : "-"}</td>
-                  <td className="border px-2 py-1">{o.mpesa_receipt || "-"}</td>
+                  <td style={{ padding: 12 }}>KES {o.amount}</td>
+                  <td style={{ padding: 12 }}>
+                    <span style={badgeStyle(o.status)}>{o.status}</span>
+                  </td>
+                  <td style={{ padding: 12, color: "#6b7280" }}>
+                    {new Date(o.created_at).toLocaleString()}
+                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Modal */}
+      {selectedOrder && (
+        <div
+          onClick={() => setSelectedOrder(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: "#fff", padding: 24, borderRadius: 12, width: 360 }}
+          >
+            <h3 style={{ marginTop: 0 }}>Order {selectedOrder.id}</h3>
+            <p><b>Name:</b> {selectedOrder.customer_name}</p>
+            <p><b>Phone:</b> {selectedOrder.phone}</p>
+            <p><b>Amount:</b> KES {selectedOrder.amount}</p>
+            <p><b>Status:</b> {selectedOrder.status}</p>
+            <button
+              onClick={() => setSelectedOrder(null)}
+              style={{
+                marginTop: 16,
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: "none",
+                background: "#111827",
+                color: "#fff",
+                cursor: "pointer"
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+export default App;
