@@ -8,11 +8,11 @@ function App() {
   const [search, setSearch] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
 
-  // Fetch orders from backend
   const fetchOrders = async () => {
     try {
       const res = await fetch(`${API_URL}/orders`);
       const data = await res.json();
+
       if (data.status === "ok") {
         setOrders(data.orders || []);
         setApiOnline(true);
@@ -26,7 +26,7 @@ function App() {
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 5000);
+    const interval = setInterval(fetchOrders, 4000);
     return () => clearInterval(interval);
   }, []);
 
@@ -34,6 +34,7 @@ function App() {
     switch (status) {
       case "PAID":
         return "#16a34a";
+      case "PENDING":
       case "AWAITING_PAYMENT":
         return "#f59e0b";
       case "FAILED":
@@ -43,11 +44,10 @@ function App() {
     }
   };
 
-  const filteredOrders = orders.filter(
-    (o) =>
-      o.id.toLowerCase().includes(search.toLowerCase()) ||
-      o.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-      (o.mpesa_receipt && o.mpesa_receipt.toLowerCase().includes(search.toLowerCase()))
+  const filteredOrders = orders.filter((o) =>
+    o.id.toLowerCase().includes(search.toLowerCase()) ||
+    (o.customer || "").toLowerCase().includes(search.toLowerCase()) ||
+    o.phone.includes(search)
   );
 
   return (
@@ -59,10 +59,10 @@ function App() {
           <span
             style={{
               display: "inline-block",
-              width: 12,
-              height: 12,
+              width: 10,
+              height: 10,
               borderRadius: "50%",
-              background: apiOnline ? "green" : "red",
+              background: apiOnline ? "#16a34a" : "#dc2626",
               marginRight: 8,
             }}
           />
@@ -73,14 +73,14 @@ function App() {
       {/* Search */}
       <input
         type="text"
-        placeholder="Search by Order ID, Name, or Receipt..."
+        placeholder="Search by Order ID, Name or Phone"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         style={{
           marginTop: 20,
           padding: 10,
           width: "100%",
-          maxWidth: 400,
+          maxWidth: 420,
           borderRadius: 8,
           border: "1px solid #ddd",
         }}
@@ -91,17 +91,18 @@ function App() {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "#f9fafb" }}>
-              {["Order ID", "Name", "Phone", "Amount", "Receipt", "Status", "Created"].map((h) => (
-                <th key={h} style={{ padding: 12, textAlign: "left", borderBottom: "1px solid #ddd" }}>
+              {["Order ID", "Name", "Phone", "Amount", "Status", "Time"].map((h) => (
+                <th key={h} style={{ padding: 12, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>
                   {h}
                 </th>
               ))}
             </tr>
           </thead>
+
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan="7" style={{ padding: 20, textAlign: "center" }}>
+                <td colSpan="6" style={{ padding: 20, textAlign: "center", color: "#6b7280" }}>
                   No orders yet
                 </td>
               </tr>
@@ -109,19 +110,16 @@ function App() {
               filteredOrders.map((order) => (
                 <tr
                   key={order.id}
-                  style={{ cursor: "pointer" }}
                   onClick={() => setSelectedOrder(order)}
+                  style={{ cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}
                 >
                   <td style={{ padding: 12, color: "#2563eb", fontWeight: 600 }}>
                     {order.id}
                   </td>
-                  <td style={{ padding: 12 }}>
-                    {order.customer_name.startsWith("whatsapp:") ? order.phone : order.customer_name}
-                  </td>
+                  <td style={{ padding: 12 }}>{order.customer || "—"}</td>
                   <td style={{ padding: 12 }}>{order.phone}</td>
                   <td style={{ padding: 12 }}>KES {order.amount}</td>
-                  <td style={{ padding: 12 }}>{order.mpesa_receipt || "-"}</td>
-                  <td style={{ padding: 12, color: getStatusColor(order.status), fontWeight: "bold" }}>
+                  <td style={{ padding: 12, fontWeight: "bold", color: getStatusColor(order.status) }}>
                     {order.status}
                   </td>
                   <td style={{ padding: 12 }}>
@@ -134,7 +132,7 @@ function App() {
         </table>
       </div>
 
-      {/* Order Modal */}
+      {/* Modal */}
       {selectedOrder && (
         <div
           onClick={() => setSelectedOrder(null)}
@@ -143,8 +141,8 @@ function App() {
             inset: 0,
             background: "rgba(0,0,0,0.4)",
             display: "flex",
-            justifyContent: "center",
             alignItems: "center",
+            justifyContent: "center",
           }}
         >
           <div
@@ -154,21 +152,20 @@ function App() {
               padding: 24,
               borderRadius: 12,
               width: "90%",
-              maxWidth: 400,
+              maxWidth: 420,
             }}
           >
             <h3>Order {selectedOrder.id}</h3>
-            <p><b>Name:</b> {selectedOrder.customer_name.startsWith("whatsapp:") ? selectedOrder.phone : selectedOrder.customer_name}</p>
+            <p><b>Name:</b> {selectedOrder.customer}</p>
             <p><b>Phone:</b> {selectedOrder.phone}</p>
             <p><b>Amount:</b> KES {selectedOrder.amount}</p>
-            <p><b>Mpesa Receipt:</b> {selectedOrder.mpesa_receipt || "-"}</p>
             <p>
               <b>Status:</b>{" "}
               <span style={{ color: getStatusColor(selectedOrder.status) }}>
                 {selectedOrder.status}
               </span>
             </p>
-            <p><b>Created At:</b> {new Date(selectedOrder.created_at).toLocaleString()}</p>
+            <p><b>Time:</b> {new Date(selectedOrder.created_at).toLocaleString()}</p>
 
             <button
               onClick={() => setSelectedOrder(null)}
