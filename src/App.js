@@ -1,128 +1,188 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 
+// 🔹 Replace with your live Flask API URL
 const API_URL = "https://chatpesa-whatsapp.onrender.com";
 
-export default function App() {
+function App() {
   const [orders, setOrders] = useState([]);
-  const [online, setOnline] = useState(false);
+  const [apiOnline, setApiOnline] = useState(false);
   const [search, setSearch] = useState("");
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
+  // Fetch orders from backend
   const fetchOrders = async () => {
     try {
-      const res = await fetch(`${API_URL}/orders`, { cache: "no-store" });
-      if (!res.ok) throw new Error("API down");
+      const res = await fetch(`${API_URL}/orders`);
       const data = await res.json();
-      setOrders(data);
-      setOnline(true);
-    } catch {
-      setOnline(false);
+      if (data.status === "ok") {
+        setOrders(data.orders || []);
+        setApiOnline(true);
+      } else {
+        setApiOnline(false);
+      }
+    } catch (err) {
+      console.error("Fetch orders error:", err);
+      setApiOnline(false);
     }
   };
 
+  // Auto-refresh every 5 seconds
   useEffect(() => {
     fetchOrders();
-    const i = setInterval(fetchOrders, 3000);
-    return () => clearInterval(i);
+    const interval = setInterval(fetchOrders, 5000);
+    return () => clearInterval(interval);
   }, []);
 
-  const badge = (status) => {
-    const base = {
-      padding: "4px 10px",
-      borderRadius: 20,
-      fontSize: 12,
-      fontWeight: 600,
-      color: "#fff",
-      display: "inline-block",
-    };
-    if (status === "PAID") return { ...base, background: "#16a34a" };
-    if (status === "FAILED") return { ...base, background: "#dc2626" };
-    return { ...base, background: "#f59e0b" };
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "PAID":
+        return "#16a34a";
+      case "AWAITING_PAYMENT":
+      case "PENDING":
+        return "#f59e0b";
+      case "FAILED":
+        return "#dc2626";
+      default:
+        return "#6b7280";
+    }
   };
 
-  const filtered = orders.filter(
-    (o) =>
-      o.id.toLowerCase().includes(search.toLowerCase()) ||
-      (o.customer || "").toLowerCase().includes(search.toLowerCase())
+  const filteredOrders = orders.filter((o) =>
+    [o.id, o.customer_name, o.phone]
+      .some((field) => field?.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
-    <div style={{ padding: 24, fontFamily: "Inter, system-ui" }}>
+    <div style={{ padding: 24, fontFamily: "Inter, Arial, sans-serif" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <h2>ChatPesa Dashboard</h2>
-        <div style={{ fontWeight: 600 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h1>ChatPesa Dashboard</h1>
+        <div style={{ display: "flex", alignItems: "center" }}>
           <span
             style={{
               display: "inline-block",
-              width: 10,
-              height: 10,
+              width: 12,
+              height: 12,
               borderRadius: "50%",
-              background: online ? "#16a34a" : "#dc2626",
+              background: apiOnline ? "green" : "red",
               marginRight: 8,
             }}
           />
-          API {online ? "ONLINE" : "OFFLINE"}
+          API {apiOnline ? "ONLINE" : "OFFLINE"}
         </div>
       </div>
 
       {/* Search */}
       <input
-        placeholder="Search order or name…"
+        type="text"
+        placeholder="Search by Order ID, Name or Phone..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         style={{
-          marginTop: 16,
+          marginTop: 20,
           padding: 10,
-          borderRadius: 10,
+          width: "100%",
+          maxWidth: 400,
+          borderRadius: 8,
           border: "1px solid #ddd",
-          width: 280,
         }}
       />
 
-      {/* Table */}
+      {/* Orders Table */}
       <div style={{ marginTop: 20, overflowX: "auto" }}>
-        <table width="100%" cellPadding="12">
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ textAlign: "left", background: "#f9fafb" }}>
-              <th>Order</th>
-              <th>Name</th>
-              <th>Phone</th>
-              <th>Amount</th>
-              <th>Status</th>
-              <th>Receipt</th>
-              <th>Time</th>
+            <tr style={{ background: "#f9fafb" }}>
+              {["Order ID", "Name", "Phone", "Amount", "Status", "Created At"].map((h) => (
+                <th key={h} style={{ padding: 12, textAlign: "left", borderBottom: "1px solid #ddd" }}>
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
-
           <tbody>
-            {filtered.length === 0 && (
+            {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan="7" style={{ textAlign: "center", padding: 40 }}>
-                  No transactions yet
+                <td colSpan="6" style={{ padding: 20, textAlign: "center" }}>
+                  No orders yet
                 </td>
               </tr>
+            ) : (
+              filteredOrders.map((order) => (
+                <tr
+                  key={order.id}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setSelectedOrder(order)}
+                >
+                  <td style={{ padding: 12, color: "#2563eb", fontWeight: 600 }}>{order.id}</td>
+                  <td style={{ padding: 12 }}>
+                    {order.customer_name.startsWith("whatsapp:") ? order.phone : order.customer_name}
+                  </td>
+                  <td style={{ padding: 12 }}>{order.phone}</td>
+                  <td style={{ padding: 12 }}>KES {order.amount}</td>
+                  <td style={{ padding: 12, color: getStatusColor(order.status), fontWeight: "bold" }}>
+                    {order.status}
+                  </td>
+                  <td style={{ padding: 12 }}>{new Date(order.created_at).toLocaleString()}</td>
+                </tr>
+              ))
             )}
-
-            {filtered.map((o) => (
-              <tr key={o.id} style={{ borderBottom: "1px solid #eee" }}>
-                <td style={{ fontWeight: 600, color: "#2563eb" }}>{o.id}</td>
-                <td>{o.customer || "—"}</td>
-                <td>{o.phone}</td>
-                <td>KES {o.amount}</td>
-                <td>
-                  <span style={badge(o.status)}>{o.status}</span>
-                </td>
-                <td>{o.mpesa_receipt || "—"}</td>
-                <td>
-                  {o.created_at
-                    ? new Date(o.created_at).toLocaleString()
-                    : "—"}
-                </td>
-              </tr>
-            ))}
           </tbody>
         </table>
       </div>
+
+      {/* Order Modal */}
+      {selectedOrder && (
+        <div
+          onClick={() => setSelectedOrder(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              padding: 24,
+              borderRadius: 12,
+              width: "90%",
+              maxWidth: 400,
+            }}
+          >
+            <h3>Order {selectedOrder.id}</h3>
+            <p><b>Name:</b> {selectedOrder.customer_name.startsWith("whatsapp:") ? selectedOrder.phone : selectedOrder.customer_name}</p>
+            <p><b>Phone:</b> {selectedOrder.phone}</p>
+            <p><b>Amount:</b> KES {selectedOrder.amount}</p>
+            <p>
+              <b>Status:</b>{" "}
+              <span style={{ color: getStatusColor(selectedOrder.status) }}>{selectedOrder.status}</span>
+            </p>
+            <p><b>Created At:</b> {new Date(selectedOrder.created_at).toLocaleString()}</p>
+
+            <button
+              onClick={() => setSelectedOrder(null)}
+              style={{
+                marginTop: 20,
+                padding: "10px 16px",
+                borderRadius: 8,
+                border: "none",
+                background: "#111827",
+                color: "#fff",
+                cursor: "pointer",
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+export default App;
