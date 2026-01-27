@@ -13,71 +13,68 @@ function App() {
       const res = await fetch(`${API_URL}/orders`);
       const data = await res.json();
 
-      if (data.status === "ok") {
+      if (Array.isArray(data)) {
+        setOrders(data);
+        setApiOnline(true);
+      } else if (data.status === "ok") {
         setOrders(data.orders || []);
         setApiOnline(true);
       } else {
         setApiOnline(false);
       }
-    } catch (err) {
+    } catch (e) {
+      console.error("Dashboard fetch error:", e);
       setApiOnline(false);
     }
   };
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 4000);
-    return () => clearInterval(interval);
+    const i = setInterval(fetchOrders, 4000);
+    return () => clearInterval(i);
   }, []);
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "PAID":
-        return "#16a34a";
-      case "PENDING":
-      case "AWAITING_PAYMENT":
-        return "#f59e0b";
-      case "FAILED":
-        return "#dc2626";
-      default:
-        return "#6b7280";
-    }
+  const statusColor = (s) => {
+    if (s === "PAID") return "#16a34a";
+    if (s === "PENDING" || s === "AWAITING_PAYMENT") return "#f59e0b";
+    if (s === "FAILED") return "#dc2626";
+    return "#6b7280";
   };
 
-  const filteredOrders = orders.filter((o) =>
-    o.id.toLowerCase().includes(search.toLowerCase()) ||
-    (o.customer || "").toLowerCase().includes(search.toLowerCase()) ||
-    o.phone.includes(search)
+  const filtered = orders.filter((o) =>
+    [o.id, o.customer, o.phone]
+      .join(" ")
+      .toLowerCase()
+      .includes(search.toLowerCase())
   );
 
   return (
-    <div style={{ padding: 24, fontFamily: "Inter, Arial, sans-serif" }}>
+    <div style={{ padding: 24, fontFamily: "Inter, system-ui, sans-serif" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1>ChatPesa Dashboard</h1>
+        <h2>ChatPesa Dashboard</h2>
         <div>
           <span
             style={{
-              display: "inline-block",
               width: 10,
               height: 10,
               borderRadius: "50%",
+              display: "inline-block",
+              marginRight: 6,
               background: apiOnline ? "#16a34a" : "#dc2626",
-              marginRight: 8,
             }}
           />
-          API {apiOnline ? "ONLINE" : "OFFLINE"}
+          {apiOnline ? "ONLINE" : "OFFLINE"}
         </div>
       </div>
 
       {/* Search */}
       <input
-        type="text"
-        placeholder="Search by Order ID, Name or Phone"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by order, name or phone"
         style={{
-          marginTop: 20,
+          marginTop: 16,
           padding: 10,
           width: "100%",
           maxWidth: 420,
@@ -86,48 +83,44 @@ function App() {
         }}
       />
 
-      {/* Orders Table */}
+      {/* Table */}
       <div style={{ marginTop: 20, overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table width="100%" cellPadding="10" style={{ borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ background: "#f9fafb" }}>
-              {["Order ID", "Name", "Phone", "Amount", "Status", "Time"].map((h) => (
-                <th key={h} style={{ padding: 12, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>
-                  {h}
-                </th>
-              ))}
+            <tr style={{ background: "#f9fafb", textAlign: "left" }}>
+              <th>Order</th>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Amount</th>
+              <th>Status</th>
+              <th>Created</th>
             </tr>
           </thead>
-
           <tbody>
-            {filteredOrders.length === 0 ? (
+            {filtered.length === 0 && (
               <tr>
-                <td colSpan="6" style={{ padding: 20, textAlign: "center", color: "#6b7280" }}>
+                <td colSpan="6" style={{ textAlign: "center", padding: 20 }}>
                   No orders yet
                 </td>
               </tr>
-            ) : (
-              filteredOrders.map((order) => (
-                <tr
-                  key={order.id}
-                  onClick={() => setSelectedOrder(order)}
-                  style={{ cursor: "pointer", borderBottom: "1px solid #f1f5f9" }}
-                >
-                  <td style={{ padding: 12, color: "#2563eb", fontWeight: 600 }}>
-                    {order.id}
-                  </td>
-                  <td style={{ padding: 12 }}>{order.customer || "—"}</td>
-                  <td style={{ padding: 12 }}>{order.phone}</td>
-                  <td style={{ padding: 12 }}>KES {order.amount}</td>
-                  <td style={{ padding: 12, fontWeight: "bold", color: getStatusColor(order.status) }}>
-                    {order.status}
-                  </td>
-                  <td style={{ padding: 12 }}>
-                    {new Date(order.created_at).toLocaleString()}
-                  </td>
-                </tr>
-              ))
             )}
+
+            {filtered.map((o) => (
+              <tr
+                key={o.id}
+                onClick={() => setSelectedOrder(o)}
+                style={{ cursor: "pointer", borderBottom: "1px solid #eee" }}
+              >
+                <td style={{ fontWeight: 600, color: "#2563eb" }}>{o.id}</td>
+                <td>{o.customer || "—"}</td>
+                <td>{o.phone}</td>
+                <td>KES {o.amount}</td>
+                <td style={{ color: statusColor(o.status), fontWeight: 600 }}>
+                  {o.status}
+                </td>
+                <td>{new Date(o.created_at).toLocaleString()}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -139,7 +132,7 @@ function App() {
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.4)",
+            background: "rgba(0,0,0,.4)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -151,8 +144,7 @@ function App() {
               background: "#fff",
               padding: 24,
               borderRadius: 12,
-              width: "90%",
-              maxWidth: 420,
+              width: 360,
             }}
           >
             <h3>Order {selectedOrder.id}</h3>
@@ -161,19 +153,18 @@ function App() {
             <p><b>Amount:</b> KES {selectedOrder.amount}</p>
             <p>
               <b>Status:</b>{" "}
-              <span style={{ color: getStatusColor(selectedOrder.status) }}>
+              <span style={{ color: statusColor(selectedOrder.status) }}>
                 {selectedOrder.status}
               </span>
             </p>
-            <p><b>Time:</b> {new Date(selectedOrder.created_at).toLocaleString()}</p>
 
             <button
               onClick={() => setSelectedOrder(null)}
               style={{
-                marginTop: 20,
-                padding: "10px 16px",
-                borderRadius: 8,
+                marginTop: 16,
+                padding: "8px 14px",
                 border: "none",
+                borderRadius: 6,
                 background: "#111827",
                 color: "#fff",
                 cursor: "pointer",
